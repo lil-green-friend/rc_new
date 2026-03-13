@@ -7,7 +7,7 @@ from utils.RC_torch import RECKON
 
 class RECKON_Wrapper(nn.Module):
     """Allows setting parameters from float values"""
-    def __init__(self, *reckon_args, **reckon_kw):
+    def __init__(self, *reckon_args, n_in=256, **reckon_kw):
         super().__init__()
         object.__setattr__(self, "net", RECKON(*reckon_args, **reckon_kw)) # Bypass nn.Module registration
         self.net.h_max = pt.tensor([0, 127]) # adjust hidden state to uint7
@@ -16,14 +16,15 @@ class RECKON_Wrapper(nn.Module):
         self.register_buffer("n_res", pt.tensor(self.net._N) )
         self.register_buffer("n_out", pt.tensor(self.net.n_out))
         self.register_buffer("n_rec", self.n_res - self.n_out)
+        self.register_buffer("n_in", pt.tensor(n_in))
 
         self.tau = nn.Parameter(pt.empty((self.net._bs)))
-        self.thr = nn.Parameter(pt.empty((self.net._bs, 2)))
+        self.thr = nn.Parameter(pt.empty((self.net._bs, 3)))
         self.Win_scale = nn.Parameter(pt.empty((self.net._bs, 2)))
         self.Wout = nn.Parameter(pt.empty((self.net._bs, self.n_out, self.n_rec))) # only positive weights, sign is handled by mask_EI
 
         Win_0 = pt.distributions.Beta(0.5, 0.5).sample(self.net.Win[0].shape) * 2 - 1
-        Win_0[..., :self.n_out, :] = 0
+        Win_0[..., :self.n_out + self.n_in, :] = 0
         self.register_buffer("Win_0", Win_0)        
         self.register_buffer("Wrec", pt.tensor(self.net.Wrec[0]))
         self.register_buffer("mask_EI", self.net._mask_EI)
@@ -34,7 +35,7 @@ class RECKON_Wrapper(nn.Module):
 
     def set_parametrizations(self):
         parametrize.register_parametrization(self, "tau", UpdateTau(self))
-        parametrize.register_parametrization(self, "thr", UpdateThr_OutRec(self))
+        parametrize.register_parametrization(self, "thr", UpdateThr_OutInRec(self))
         parametrize.register_parametrization(self, "Win_scale", UpdateWin(self))
         parametrize.register_parametrization(self, "Wout", UpdateWout(self))
         parametrize.register_parametrization(self, "Wrec", UpdateWrec(self))
@@ -50,15 +51,16 @@ class UpdateTau(nn.Module):
         return x
 
 
-class UpdateThr_OutRec(nn.Module):
+class UpdateThr_OutInRec(nn.Module):
     def __init__(self, base):
         super().__init__()
         object.__setattr__(self, "base", base)
     
     def forward(self, x):
         t_out = x[..., 0:1]
-        t_res = x[..., 1:2]
-        t = pt.hstack([t_out.repeat(1, self.base.n_out), t_res.repeat(1, self.base.n_rec)])
+        t_rec = x[..., 1:2]
+        t_in = x[..., 2:3]
+        t = pt.hstack([t_out.repeat(1, self.base.n_out), t_in.repeat(1, self.base.n_in), t_rec.repeat(1, self.base.n_rec-self.base.n_in)])
         self.base.net.threshold = t
         return x
 

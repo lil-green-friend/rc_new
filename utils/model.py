@@ -77,7 +77,7 @@ class SOM_layer(nn.Module):
         return x
 
 class MyModel(nn.Module):
-    def __init__(self, batch_size, device, n_inputs, n_actions, steps_per_frame, excitation_coefficient, reservoir_n_in=128, reservoir_n=256, reservoir_n_out=32, reservoir_sparsity=0.8):
+    def __init__(self, batch_size, device, n_inputs, n_actions, steps_per_frame, excitation_coefficient, reservoir_n_in=[128, 16], reservoir_n=256, reservoir_n_out=32, reservoir_sparsity=0.8):
         super().__init__()
 
         buffers = ["n_inputs", "n_actions", "steps_per_frame", "excitation_coefficient", "reservoir_n_in", "reservoir_n", "reservoir_n_out", "reservoir_sparsity"]
@@ -90,14 +90,14 @@ class MyModel(nn.Module):
 
         self.beta = nn.Parameter(pt.empty((self.bs,)))
         self.input_res = nn.Parameter(pt.empty((self.bs, self.n_inputs)))
-
-        self.som = SOM_layer(self.n_inputs, self.reservoir_n_in)
+        self.som = SOM_layer(self.n_inputs, self.reservoir_n_in[0])
         self.spike_gen = PoissonSpikeGeneration(20)
         self.chip = RECKON_Wrapper(self.bs,
             n_channels_in=1,
             n_reservoir=self.reservoir_n.item(),
+            n_in = self.reservoir_n_in[1].item(),
             n_channels_out=self.n_actions.item(),
-            res_input = self.reservoir_n_in.item(),
+            res_input = self.reservoir_n_in[0].item(),
             res_readout = (self.reservoir_n_out // self.n_actions).item(),
             sparsity = [self.reservoir_sparsity.item()],
             mask_sparsity = create_sparsity_mask(self.reservoir_n.item(), self.reservoir_sparsity.item()),
