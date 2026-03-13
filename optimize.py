@@ -19,25 +19,28 @@ def set_params(model, vector, bs):
         p.data = vector[:, pointer:pointer+num].view_as(p)
         pointer += num
 
+    model.update_parametrizations()
+
 def evaluate(model, env, params, n_evals, max_frames, device="cpu"):
     w = pt.linspace(1 / n_evals, 1, n_evals)
     w = w / pt.sum(w)
     # TODO with torch.inference_mode() ???
+    
+    params_stacked = pt.repeat_interleave(params, n_evals, dim=0)
+
+    bs = params_stacked.shape[0]
+    set_params(model, params_stacked, bs)
+    # model.reset()
+
+    rewards = pt.zeros((max_frames, bs), dtype=pt.float, device=device)
+    action_prob = pt.zeros((max_frames, bs), dtype=pt.bool, device=device)
+    spike_activity = pt.zeros((max_frames, bs), dtype=pt.float, device=device)
+
+    last_term = pt.zeros(bs, dtype=pt.int, device=device) - 1
+    term_count = pt.zeros(bs, dtype=pt.int, device=device)
+    
+    obs = env.reset()
     with parametrize.cached():
-        params_stacked = pt.repeat_interleave(params, n_evals, dim=0)
-
-        bs = params_stacked.shape[0]
-        set_params(model, params_stacked, bs)
-        # model.reset()
-
-        rewards = pt.zeros((max_frames, bs), dtype=pt.float, device=device)
-        action_prob = pt.zeros((max_frames, bs), dtype=pt.bool, device=device)
-        spike_activity = pt.zeros((max_frames, bs), dtype=pt.float, device=device)
-
-        last_term = pt.zeros(bs, dtype=pt.int, device=device) - 1
-        term_count = pt.zeros(bs, dtype=pt.int, device=device)
-
-        obs = env.reset()
         for f in range(max_frames):
             action, activity = model.forward(obs)            
             obs, rew, term, _ = env.step(action)
@@ -48,22 +51,22 @@ def evaluate(model, env, params, n_evals, max_frames, device="cpu"):
             last_term[term] = f 
             term_count += term 
        
-        total_score = pt.sum(rewards, 0)
-        for i in range(bs):
-            # if at least one episode was completed, cut off rewards for last, uncompleted episode
-            if last_term[i] != -1:
-                rewards[last_term[i]+1:, i] = 0
-        per_episode_score = pt.sum(rewards, 0) / pt.clip(pt.tensor(term_count), min=1)
-        action_prob = pt.mean(action_prob.float(), 0)
-        firing_rate = pt.mean(spike_activity.float(), 0)
+    total_score = pt.sum(rewards, 0)
+    for i in range(bs):
+        # if at least one episode was completed, cut off rewards for last, uncompleted episode
+        if last_term[i] != -1:
+            rewards[last_term[i]+1:, i] = 0
+    per_episode_score = pt.sum(rewards, 0) / pt.clip(pt.tensor(term_count), min=1)
+    action_prob = pt.mean(action_prob.float(), 0)
+    firing_rate = pt.mean(spike_activity.float(), 0)
 
-        per_episode_score, total_score, action_prob, firing_rate = [x.reshape(bs // n_evals, n_evals) for x in [per_episode_score, total_score, action_prob, firing_rate]]
+    per_episode_score, total_score, action_prob, firing_rate = [x.reshape(bs // n_evals, n_evals) for x in [per_episode_score, total_score, action_prob, firing_rate]]
 
-        fitness = fitness_function(per_episode_score, w)
+    fitness = fitness_function(per_episode_score, w)
 
-        total_score, action_prob, firing_rate = [pt.mean(x, dim=1) for x in [total_score, action_prob, firing_rate]]
+    total_score, action_prob, firing_rate = [pt.mean(x, dim=1) for x in [total_score, action_prob, firing_rate]]
 
-        return fitness, total_score, action_prob, firing_rate
+    return fitness, total_score, action_prob, firing_rate
 
 def create_fields(f: h5py.File, n_epochs: int, model: pt.nn.Module, map, saved_params: list):
     res = f.create_group("results")

@@ -117,6 +117,16 @@ class MyModel(nn.Module):
         parametrize.register_parametrization(self.chip, "Wout", BoundedConstraint_Cos(0, 7))
         self.chip.set_parametrizations()
 
+    def update_parametrizations(self):
+        self.beta
+        self.input_res
+        self.chip.tau
+        self.chip.thr
+        self.chip.Win_scale
+        self.chip.Wout
+        self.chip.Wrec
+
+
     def forward(self, x):
         x = pt.clip(x * self.input_res, -1, 1)
         x = self.som(x)
