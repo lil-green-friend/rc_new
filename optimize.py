@@ -200,7 +200,7 @@ if __name__ == "__main__":
     }
 
 
-    model = MyModel(n_agents*n_evals, "cpu", 8, 4, 20, 32)
+    model = MyModel(n_agents*n_evals, device, 8, 4, 20, 32)
     model.load_state_dict(state_dict, strict=False)
 
     env = LLWrapper(n_agents*n_evals, n_threads, device)
