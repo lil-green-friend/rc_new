@@ -62,7 +62,7 @@ class PoissonSpikeGeneration(nn.Module):
     def forward(self, x):
         x = pt.poisson(x.unsqueeze(1).expand(-1, self.n_sub_steps, -1))
         x[x > 1] = 1
-        return x.bool().float()
+        return x.bool()
 
 class SOM_layer(nn.Module):
     def __init__(self, in_features, out_features):
@@ -117,6 +117,8 @@ class MyModel(nn.Module):
         parametrize.register_parametrization(self.chip, "Wout", BoundedConstraint_Cos(0, 7))
         self.chip.set_parametrizations()
 
+        self.to(device)
+
     def update_parametrizations(self):
         self.beta
         self.input_res
@@ -132,7 +134,7 @@ class MyModel(nn.Module):
         x = self.som(x)
         x = nn.functional.normalize(pt.clamp(x + 1, min=0.0), 1, dim=1) * self.excitation_coefficient
         x = self.spike_gen(x)
-        activity = self.chip(x)
+        activity = self.chip(x.to(self.chip.net.precision))
         x = activity[..., :self.reservoir_n_out, :].view(self.bs, self.n_inputs, self.n_actions, -1)
         x = pt.mean(x, dim=(1, 3), dtype=float) * (20 / self.steps_per_frame) # rate coding
         action = pt.distributions.Categorical(logits=self.beta[:, None] * x).sample() # softmax

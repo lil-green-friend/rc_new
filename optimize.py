@@ -231,7 +231,7 @@ if __name__ == "__main__":
 
     for ep in range(n_epochs + 1):
         t_start = time()
-        evals = evaluate(model, env, params, n_evals=n_evals, max_frames=max_frames)
+        evals = evaluate(model, env, params, n_evals=n_evals, max_frames=max_frames, device=device)
         cos.set_evals(pt.stack(evals, dim=1))
 
         write_data(per_epoch, n_epochs, ep, cos, model, saved_params)
