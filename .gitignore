@@ -1,0 +1,9 @@
+__pycache__/
+*Zone.Identifier
+
+data/*
+
+*tmp*
+pyproject.toml
+.ruff_cache/
+.vscode

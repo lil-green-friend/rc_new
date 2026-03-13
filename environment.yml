@@ -1,0 +1,19 @@
+name: mimo
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python = 3.11
+  - numpy = 1.26.4
+  - matplotlib
+  - gymnasium[box2d]
+  - tianshou
+  - scipy
+  - dill
+  - pip
+  - pandas
+  - pip: 
+      - envpool
+      - ray
+
+# conda env create -f environment.yml
