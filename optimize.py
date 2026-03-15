@@ -189,9 +189,10 @@ if __name__ == "__main__":
     device = "cuda" if pt.cuda.is_available() else "cpu"
     n_threads = max([i for i in range(1, max(4, os.cpu_count() // 4) + 1) if batch_size % i == 0])
 
-    som_path = "./data/soms/random_play_sigma_4_uniform_1k.npz"
+    som_path = "./data/soms/random_play_sigma_4_uniform_1k_112n.npz"
     som_data = np.load(som_path, allow_pickle=True)
     weights = pt.from_numpy(som_data['weights']).to(device)
+    weights = pt.cat([weights, weights], dim=0)
     means = pt.from_numpy(som_data['input_means']).to(device)
     stds = pt.from_numpy(som_data['input_stds']).to(device)
 
@@ -202,7 +203,7 @@ if __name__ == "__main__":
     }
 
 
-    model = MyModel(batch_size, device, 8, 4, 20, 32)
+    model = MyModel(batch_size, device, 8, 4, 20, 32, reservoir_n_in=224)
     model.load_state_dict(state_dict, strict=False)
 
     env = LLWrapper(batch_size, n_threads, device)
