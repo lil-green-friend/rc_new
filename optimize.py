@@ -174,11 +174,9 @@ def copy_source_files(source_files, target_path):
 if __name__ == "__main__":
     test_run = not sys.argv[1] == 'False' if len(sys.argv) > 1 else True
     _, results_path = init_directories("./data/exp/", test_run=test_run, min_id=0)
-    device = "cuda" if pt.cuda.is_available() else "cpu"
     n_agents = 60
-    n_threads = max([i for i in range(1, min(4, os.cpu_count() // 2) + 1) if n_agents % i == 0])
-    max_frames = 1000
     n_evals = 16
+    max_frames = 1000
     n_epochs = 3000
 
     if test_run:
@@ -186,6 +184,10 @@ if __name__ == "__main__":
         max_frames = 100
         n_evals = 8
         n_epochs = 10
+
+    batch_size = n_agents * n_evals
+    device = "cuda" if pt.cuda.is_available() else "cpu"
+    n_threads = max([i for i in range(1, max(4, os.cpu_count() // 4) + 1) if batch_size % i == 0])
 
     som_path = "./data/soms/random_play_sigma_4_uniform_1k.npz"
     som_data = np.load(som_path, allow_pickle=True)
@@ -200,10 +202,10 @@ if __name__ == "__main__":
     }
 
 
-    model = MyModel(n_agents*n_evals, device, 8, 4, 20, 32)
+    model = MyModel(batch_size, device, 8, 4, 20, 32)
     model.load_state_dict(state_dict, strict=False)
 
-    env = LLWrapper(n_agents*n_evals, n_threads, device)
+    env = LLWrapper(batch_size, n_threads, device)
 
     n_params = get_n_params(model)
     map_lower = [0.25, 0.01]
@@ -214,7 +216,7 @@ if __name__ == "__main__":
 
     cos = CosyneWrapper(feature_grid, map_depth, n_agents, n_params, evals_size=3, device=device)
 
-    saved_params = [k.replace("parametrizations.", "").replace(".original", "") for k, v in model.named_parameters() if v.numel() < 10 * n_agents*n_evals]
+    saved_params = [k.replace("parametrizations.", "").replace(".original", "") for k, v in model.named_parameters() if v.numel() < 10 * batch_size]
 
     params = cos.initial_params()
 
