@@ -24,7 +24,8 @@ class RECKON_Wrapper(nn.Module):
         self.Wout = nn.Parameter(pt.empty((self.net._bs, self.n_out, self.n_rec))) # only positive weights, sign is handled by mask_EI
 
         Win_0 = pt.distributions.Beta(0.5, 0.5).sample(self.net.Win[0].shape) * 2 - 1
-        Win_0[..., :self.n_out + self.n_in, :] = 0
+        Win_0[..., :self.n_out, :] = 0
+        Win_0[..., self.n_out + self.n_in:, :] = 0
         self.register_buffer("Win_0", Win_0)        
         self.register_buffer("Wrec", pt.tensor(self.net.Wrec[0]))
         self.register_buffer("mask_EI", self.net._mask_EI)
