@@ -42,7 +42,7 @@ def evaluate(model, env, params, n_evals, max_frames, device="cpu"):
     obs = env.reset()
     with parametrize.cached():
         for f in range(max_frames):
-            action, activity = model.forward(obs)            
+            action, activity = model(obs)            
             obs, rew, term, _ = env.step(action)
             rewards[f] = rew
             action_prob[f] = action > 0
