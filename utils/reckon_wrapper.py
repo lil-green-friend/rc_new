@@ -16,15 +16,13 @@ class RECKON_Wrapper(nn.Module):
         self.register_buffer("n_res", pt.tensor(self.net._N) )
         self.register_buffer("n_out", pt.tensor(self.net.n_out))
         self.register_buffer("n_rec", self.n_res - self.n_out)
+        self.register_buffer("n_in", pt.tensor(self.net.n_input))
 
         self.tau = nn.Parameter(pt.empty((self.net._bs)))
         self.thr = nn.Parameter(pt.empty((self.net._bs, 2)))
-        self.Win_scale = nn.Parameter(pt.empty((self.net._bs, 2)))
+        self.Win = nn.Parameter(pt.empty((self.net._bs, self.n_rec, self.n_in)))
         self.Wout = nn.Parameter(pt.empty((self.net._bs, self.n_out, self.n_rec))) # only positive weights, sign is handled by mask_EI
 
-        Win_0 = pt.distributions.Beta(0.5, 0.5).sample(self.net.Win[0].shape) * 2 - 1
-        Win_0[..., :self.n_out, :] = 0
-        self.register_buffer("Win_0", Win_0)        
         self.register_buffer("Wrec", pt.tensor(self.net.Wrec[0]))
         self.register_buffer("mask_EI", self.net._mask_EI)
     
@@ -35,7 +33,7 @@ class RECKON_Wrapper(nn.Module):
     def set_parametrizations(self):
         parametrize.register_parametrization(self, "tau", UpdateTau(self))
         parametrize.register_parametrization(self, "thr", UpdateThr_OutRec(self))
-        parametrize.register_parametrization(self, "Win_scale", UpdateWin(self))
+        parametrize.register_parametrization(self, "Win", UpdateWin(self))
         parametrize.register_parametrization(self, "Wout", UpdateWout(self))
         parametrize.register_parametrization(self, "Wrec", UpdateWrec(self))
 
@@ -68,14 +66,11 @@ class UpdateWin(nn.Module):
         object.__setattr__(self, "base", base)
 
     def forward(self, x): 
-        scale = x[..., 0][..., None, None]
-        bias = x[..., 1][..., None, None]
         Win = pt.zeros(self.base.net.Win.shape)
-        Win[..., self.base.n_out:, :] = (self.base.Win_0[None, self.base.n_out:, :] * scale + bias)
+        Win[..., self.base.n_out:, :] = x
         Win = pt.clip(Win.round(), -7, 7)
         self.base.net.set_weights(Win, 'in', overwrite=True, respect_sparsity=False)
         return x
-
 
 class UpdateWout(nn.Module):
     def __init__(self, base):

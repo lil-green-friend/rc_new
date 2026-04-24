@@ -64,6 +64,16 @@ class PoissonSpikeGeneration(nn.Module):
         x[x > 1] = 1
         return x.bool()
 
+class NormalizationLayer(nn.Module):
+    def __init__(self, in_features, out_features):
+        super().__init__()
+        self.register_buffer("input_means", pt.empty((in_features,)))
+        self.register_buffer("input_stds", pt.empty((in_features,)))
+
+    def forward(self, x):
+        x = (x - self.input_means) / self.input_stds
+        return x
+
 class SOM_layer(nn.Module):
     def __init__(self, in_features, out_features):
         super().__init__()
@@ -91,7 +101,7 @@ class MyModel(nn.Module):
         self.beta = nn.Parameter(pt.empty((self.bs,)))
         self.input_res = nn.Parameter(pt.empty((self.bs, self.n_inputs)))
 
-        self.som = SOM_layer(self.n_inputs, self.reservoir_n_in)
+        self.norm = NormalizationLayer(self.n_inputs, self.reservoir_n_in)
         self.spike_gen = PoissonSpikeGeneration(20)
         self.chip = RECKON_Wrapper(self.bs,
             n_channels_in=1,
@@ -113,7 +123,7 @@ class MyModel(nn.Module):
         parametrize.register_parametrization(self.chip, "tau", IntegerConstraint())
         parametrize.register_parametrization(self.chip, "thr", BoundedConstraint_Linear(1, 127))
         parametrize.register_parametrization(self.chip, "thr", IntegerConstraint())
-        parametrize.register_parametrization(self.chip, "Win_scale", BoundedConstraint_Linear(-7, 7))
+        parametrize.register_parametrization(self.chip, "Win", BoundedConstraint_Linear(-7, 7))
         parametrize.register_parametrization(self.chip, "Wout", BoundedConstraint_Cos(0, 7))
         self.chip.set_parametrizations()
 
@@ -124,14 +134,14 @@ class MyModel(nn.Module):
         self.input_res
         self.chip.tau
         self.chip.thr
-        self.chip.Win_scale
+        self.chip.Win
         self.chip.Wout
         self.chip.Wrec
 
 
     def forward(self, x):
+        x = self.norm(x)
         x = pt.clip(x * self.input_res, -1, 1)
-        x = self.som(x)
         x = nn.functional.normalize(pt.clamp(x + 1, min=0.0), 1, dim=1) * self.excitation_coefficient
         x = self.spike_gen(x)
         activity = self.chip(x.to(self.chip.net.precision))

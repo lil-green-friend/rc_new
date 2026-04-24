@@ -177,7 +177,7 @@ if __name__ == "__main__":
     n_agents = 60
     n_evals = 16
     max_frames = 1000
-    n_epochs = 3000
+    n_epochs = 5000
 
     if test_run:
         n_agents = 6
@@ -191,18 +191,16 @@ if __name__ == "__main__":
 
     som_path = "./data/soms/random_play_sigma_4_uniform_1k.npz"
     som_data = np.load(som_path, allow_pickle=True)
-    weights = pt.from_numpy(som_data['weights']).to(device)
     means = pt.from_numpy(som_data['input_means']).to(device)
     stds = pt.from_numpy(som_data['input_stds']).to(device)
 
     state_dict = {
-        "som.input_means": means,
-        "som.input_stds": stds,
-        "som.weights": weights
+        "norm.input_means": means,
+        "norm.input_stds": stds,
     }
 
 
-    model = MyModel(batch_size, device, 8, 4, 20, 32)
+    model = MyModel(batch_size, device, 8, 4, 20, 4, reservoir_n_in=8)
     model.load_state_dict(state_dict, strict=False)
 
     env = LLWrapper(batch_size, n_threads, device)
