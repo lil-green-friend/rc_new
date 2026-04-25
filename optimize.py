@@ -202,7 +202,7 @@ if __name__ == "__main__":
     }
 
 
-    model = MyModel(batch_size, device, 8, 4, 20, 32)
+    model = MyModel(batch_size, device, 8, 4, 20, 32, reservoir_n_in=weights.shape[0])
     model.load_state_dict(state_dict, strict=False)
 
     env = LLWrapper(batch_size, n_threads, device)
