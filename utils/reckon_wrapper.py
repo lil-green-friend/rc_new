@@ -23,9 +23,19 @@ class RECKON_Wrapper(nn.Module):
         self.Win_scale = nn.Parameter(pt.empty((self.net._bs, 2)))
         self.Wout = nn.Parameter(pt.empty((self.net._bs, self.n_out, self.n_rec))) # only positive weights, sign is handled by mask_EI
 
-        Win_0 = pt.distributions.Beta(0.5, 0.5).sample(self.net.Win[0].shape) * 2 - 1
-        Win_0[..., :self.n_out, :] = 0
-        Win_0[..., self.n_out + self.n_in:, :] = 0
+        n_in_inh = n_in//2
+        n_in_exc = n_in - n_in_inh
+        n_res_exc = self.n_rec - (self.n_rec - self.n_rec//2)
+
+        self.input_mask = pt.zeros((self.n_res,), dtype=bool)
+        # split up inputs into excitatory and inhibitory input neurons
+        self.input_mask[self.n_out:self.n_out + n_in_exc] = 1
+        self.input_mask[self.n_out + n_res_exc:self.n_out + n_res_exc + n_in_inh] = 1
+
+        self.net.set_weights(pt.zeros_like(self.net._Win), 'in', overwrite=True, respect_sparsity=False)
+        Win_0 = pt.full_like(self.net._Win[0], pt.nan)
+        Win_0[self.input_mask] = pt.distributions.Beta(0.5, 0.5).sample((self.n_in, self.net.n_input)) * 2 - 1
+        
         self.register_buffer("Win_0", Win_0)        
         self.register_buffer("Wrec", pt.tensor(self.net.Wrec[0]))
         self.register_buffer("mask_EI", self.net._mask_EI)
@@ -61,7 +71,9 @@ class UpdateThr_OutInRec(nn.Module):
         t_out = x[..., 0:1]
         t_rec = x[..., 1:2]
         t_in = x[..., 2:3]
-        t = pt.hstack([t_out.repeat(1, self.base.n_out), t_in.repeat(1, self.base.n_in), t_rec.repeat(1, self.base.n_rec-self.base.n_in)])
+        t = t_rec.repeat(1, self.base.n_res)
+        t[:, :self.base.n_out] = t_out.repeat(1, self.base.n_out)
+        t[:, self.base.input_mask] = t_in.repeat(1, self.base.n_in)
         self.base.net.threshold = t
         return x
 
@@ -73,10 +85,9 @@ class UpdateWin(nn.Module):
     def forward(self, x): 
         scale = x[..., 0][..., None, None]
         bias = x[..., 1][..., None, None]
-        Win = pt.zeros(self.base.net.Win.shape)
-        Win[..., self.base.n_out:, :] = (self.base.Win_0[None, self.base.n_out:, :] * scale + bias)
+        Win = self.base.Win_0[None, ...] * scale + bias
         Win = pt.clip(Win.round(), -7, 7)
-        self.base.net.set_weights(Win, 'in', overwrite=True, respect_sparsity=False)
+        self.base.net.set_weights(Win, 'in', overwrite=False, respect_sparsity=False)
         return x
 
 

@@ -42,7 +42,7 @@ def evaluate(model, env, params, n_evals, max_frames, device="cpu"):
     obs = env.reset()
     with parametrize.cached():
         for f in range(max_frames):
-            action, activity = model.forward(obs)            
+            action, activity = model(obs)            
             obs, rew, term, _ = env.step(action)
             rewards[f] = rew
             action_prob[f] = action > 0
@@ -177,7 +177,7 @@ if __name__ == "__main__":
     n_agents = 60
     n_evals = 16
     max_frames = 1000
-    n_epochs = 3000
+    n_epochs = 4000
 
     if test_run:
         n_agents = 6
@@ -189,7 +189,7 @@ if __name__ == "__main__":
     device = "cuda" if pt.cuda.is_available() else "cpu"
     n_threads = max([i for i in range(1, max(4, os.cpu_count() // 4) + 1) if batch_size % i == 0])
 
-    som_path = "./data/soms/random_play_sigma_4_uniform_1k.npz"
+    som_path = "./data/soms/small/random_play_sigma_4_uniform_1k_small_max.npz"
     som_data = np.load(som_path, allow_pickle=True)
     weights = pt.from_numpy(som_data['weights']).to(device)
     means = pt.from_numpy(som_data['input_means']).to(device)
@@ -202,7 +202,7 @@ if __name__ == "__main__":
     }
 
 
-    model = MyModel(batch_size, device, 8, 4, 20, 32)
+    model = MyModel(batch_size, device, 8, 4, 20, 32, reservoir_n_in=[weights.shape[0], 224//2])
     model.load_state_dict(state_dict, strict=False)
 
     env = LLWrapper(batch_size, n_threads, device)
