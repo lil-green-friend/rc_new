@@ -77,7 +77,7 @@ class SOM_layer(nn.Module):
         return x
 
 class MyModel(nn.Module):
-    def __init__(self, batch_size, device, n_inputs, n_actions, steps_per_frame, excitation_coefficient, reservoir_n_in=[128, 16], reservoir_n=256, reservoir_n_out=32, reservoir_sparsity=0.8):
+    def __init__(self, batch_size, device, n_inputs, n_actions, steps_per_frame, excitation_coefficient, input_connectivity, reservoir_n_in=[128, 16], reservoir_n=256, reservoir_n_out=32, reservoir_sparsity=0.8):
         super().__init__()
 
         buffers = ["n_inputs", "n_actions", "steps_per_frame", "excitation_coefficient", "reservoir_n_in", "reservoir_n", "reservoir_n_out", "reservoir_sparsity"]
@@ -96,6 +96,7 @@ class MyModel(nn.Module):
             n_channels_in=1,
             n_reservoir=self.reservoir_n.item(),
             n_in = self.reservoir_n_in[1].item(),
+            input_connectivity=input_connectivity,
             n_channels_out=self.n_actions.item(),
             res_input = self.reservoir_n_in[0].item(),
             res_readout = (self.reservoir_n_out // self.n_actions).item(),

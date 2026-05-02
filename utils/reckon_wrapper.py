@@ -7,7 +7,7 @@ from utils.RC_torch import RECKON
 
 class RECKON_Wrapper(nn.Module):
     """Allows setting parameters from float values"""
-    def __init__(self, *reckon_args, n_in=256, **reckon_kw):
+    def __init__(self, *reckon_args, n_in=256, input_connectivity=4, **reckon_kw):
         super().__init__()
         object.__setattr__(self, "net", RECKON(*reckon_args, **reckon_kw)) # Bypass nn.Module registration
         self.net.h_max = pt.tensor([0, 127]) # adjust hidden state to uint7
@@ -32,10 +32,18 @@ class RECKON_Wrapper(nn.Module):
         self.input_mask[self.n_out:self.n_out + n_in_exc] = 1
         self.input_mask[self.n_out + n_res_exc:self.n_out + n_res_exc + n_in_inh] = 1
 
+        # input matrix, where input_connectivity connections are non-zero for each input neuron
+        Win = pt.zeros((self.net.n_input, n_in))
+        for j in range(n_in):
+            idx = pt.randperm(self.net.n_input)[:input_connectivity]
+            Win[idx, j] = 1
+        Win *= pt.randint(1, 8, size=(self.net.n_input, n_in)) * (pt.randint(0, 2, size=(self.net.n_input, n_in)) * 2 - 1)
+        Win = Win.T
+
         self.net.set_weights(pt.zeros_like(self.net._Win), 'in', overwrite=True, respect_sparsity=False)
         Win_0 = pt.full_like(self.net._Win[0], pt.nan)
-        Win_0[self.input_mask] = pt.distributions.Beta(0.5, 0.5).sample((self.n_in, self.net.n_input)) * 2 - 1
-        
+        Win_0[self.input_mask] = Win
+
         self.register_buffer("Win_0", Win_0)        
         self.register_buffer("Wrec", pt.tensor(self.net.Wrec[0]))
         self.register_buffer("mask_EI", self.net._mask_EI)
