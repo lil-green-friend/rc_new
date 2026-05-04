@@ -7,7 +7,7 @@ from utils.RC_torch import RECKON
 
 class RECKON_Wrapper(nn.Module):
     """Allows setting parameters from float values"""
-    def __init__(self, *reckon_args, **reckon_kw):
+    def __init__(self, *reckon_args, input_connectivity=4, **reckon_kw):
         super().__init__()
         object.__setattr__(self, "net", RECKON(*reckon_args, **reckon_kw)) # Bypass nn.Module registration
         self.net.h_max = pt.tensor([0, 127]) # adjust hidden state to uint7
@@ -22,8 +22,18 @@ class RECKON_Wrapper(nn.Module):
         self.Win_scale = nn.Parameter(pt.empty((self.net._bs, 2)))
         self.Wout = nn.Parameter(pt.empty((self.net._bs, self.n_out, self.n_rec))) # only positive weights, sign is handled by mask_EI
 
-        Win_0 = pt.distributions.Beta(0.5, 0.5).sample(self.net.Win[0].shape) * 2 - 1
-        Win_0[..., :self.n_out, :] = 0
+        # input matrix, where input_connectivity connections are non-zero for each input neuron
+        Win = pt.zeros((self.net.n_input, self.n_rec))
+        for j in range(self.n_rec):
+            idx = pt.randperm(self.net.n_input)[:input_connectivity]
+            Win[idx, j] = 1
+        Win *= pt.distributions.Beta(0.5, 0.5).sample(Win.shape) * 2 - 1
+        Win = Win.T
+
+        self.net.set_weights(pt.zeros_like(self.net._Win), 'in', overwrite=True, respect_sparsity=False)
+        Win_0 = pt.full_like(self.net._Win[0], pt.nan)
+        Win_0[self.n_out:, :] = Win
+
         self.register_buffer("Win_0", Win_0)        
         self.register_buffer("Wrec", pt.tensor(self.net.Wrec[0]))
         self.register_buffer("mask_EI", self.net._mask_EI)
@@ -71,9 +81,9 @@ class UpdateWin(nn.Module):
         scale = x[..., 0][..., None, None]
         bias = x[..., 1][..., None, None]
         Win = pt.zeros(self.base.net.Win.shape)
-        Win[..., self.base.n_out:, :] = (self.base.Win_0[None, self.base.n_out:, :] * scale + bias)
+        Win = self.base.Win_0[None, ...] * scale + bias
         Win = pt.clip(Win.round(), -7, 7)
-        self.base.net.set_weights(Win, 'in', overwrite=True, respect_sparsity=False)
+        self.base.net.set_weights(Win, 'in', overwrite=False, respect_sparsity=False)
         return x
 
 

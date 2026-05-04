@@ -64,6 +64,16 @@ class PoissonSpikeGeneration(nn.Module):
         x[x > 1] = 1
         return x.bool()
 
+class NormalizationLayer(nn.Module):
+    def __init__(self, in_features, out_features):
+        super().__init__()
+        self.register_buffer("input_means", pt.empty((in_features,)))
+        self.register_buffer("input_stds", pt.empty((in_features,)))
+
+    def forward(self, x):
+        x = (x - self.input_means) / self.input_stds
+        return x
+
 class SOM_layer(nn.Module):
     def __init__(self, in_features, out_features):
         super().__init__()
@@ -77,10 +87,10 @@ class SOM_layer(nn.Module):
         return x
 
 class MyModel(nn.Module):
-    def __init__(self, batch_size, device, n_inputs, n_actions, steps_per_frame, excitation_coefficient, reservoir_n_in=128, reservoir_n=256, reservoir_n_out=32, reservoir_sparsity=0.8):
+    def __init__(self, batch_size, device, n_inputs, n_actions, steps_per_frame, excitation_coefficient, input_connectivity=4, reservoir_n_in=128, reservoir_n=256, reservoir_n_out=32, reservoir_sparsity=0.8):
         super().__init__()
 
-        buffers = ["n_inputs", "n_actions", "steps_per_frame", "excitation_coefficient", "reservoir_n_in", "reservoir_n", "reservoir_n_out", "reservoir_sparsity"]
+        buffers = ["n_inputs", "n_actions", "steps_per_frame", "excitation_coefficient", "input_connectivity", "reservoir_n_in", "reservoir_n", "reservoir_n_out", "reservoir_sparsity"]
         for k in buffers:
             v = locals()[k]
             v = pt.tensor(v) if not isinstance(v, pt.Tensor) else v
@@ -91,11 +101,12 @@ class MyModel(nn.Module):
         self.beta = nn.Parameter(pt.empty((self.bs,)))
         self.input_res = nn.Parameter(pt.empty((self.bs, self.n_inputs)))
 
-        self.som = SOM_layer(self.n_inputs, self.reservoir_n_in)
+        self.norm = NormalizationLayer(self.n_inputs, self.reservoir_n_in)
         self.spike_gen = PoissonSpikeGeneration(20)
         self.chip = RECKON_Wrapper(self.bs,
             n_channels_in=1,
             n_reservoir=self.reservoir_n.item(),
+            input_connectivity = input_connectivity,
             n_channels_out=self.n_actions.item(),
             res_input = self.reservoir_n_in.item(),
             res_readout = (self.reservoir_n_out // self.n_actions).item(),
@@ -131,7 +142,7 @@ class MyModel(nn.Module):
 
     def forward(self, x):
         x = pt.clip(x * self.input_res, -1, 1)
-        x = self.som(x)
+        x = self.norm(x)
         x = nn.functional.normalize(pt.clamp(x + 1, min=0.0), 1, dim=1) * self.excitation_coefficient
         x = self.spike_gen(x)
         activity = self.chip(x.to(self.chip.net.precision))
