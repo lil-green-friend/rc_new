@@ -37,7 +37,7 @@ class RECKON_Wrapper(nn.Module):
         for j in range(n_in):
             idx = pt.randperm(self.net.n_input)[:input_connectivity]
             Win[idx, j] = 1
-        Win *= pt.randint(1, 8, size=(self.net.n_input, n_in)) * (pt.randint(0, 2, size=(self.net.n_input, n_in)) * 2 - 1)
+        Win *= pt.distributions.Beta(0.5, 0.5).sample(Win.shape) * 2 - 1
         Win = Win.T
 
         self.net.set_weights(pt.zeros_like(self.net._Win), 'in', overwrite=True, respect_sparsity=False)
