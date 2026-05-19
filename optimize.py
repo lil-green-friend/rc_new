@@ -6,21 +6,12 @@ import h5py
 import numpy as np
 import torch as pt
 import torch.nn.utils.parametrize as parametrize
-from utils.model import MyModel, get_n_params, get_param_offset_and_size
-from utils.ll_wrapper import LLWrapper
-from utils.cosyne_wrapper import CosyneWrapper
+from .utils.model import MyModel, get_n_params, get_param_offset_and_size, set_params
+from .utils.ll_wrapper import LLWrapper
+from .utils.cosyne_wrapper import CosyneWrapper
+from .utils.logging import Context, Logger, HDF5Backend, SustainedCondition
 from evotorch.algorithms import MAPElites
 import glob
-from utils.logging import Context, Logger, HDF5Backend, SustainedCondition
-
-def set_params(model, vector, bs):
-    pointer = 0
-    for p in model.parameters():
-        num = p.numel() // bs
-        p.data = vector[:, pointer:pointer+num].view_as(p)
-        pointer += num
-
-    model.update_parametrizations()
 
 def evaluate(model, env, params, n_evals, max_frames, device="cpu"):
     w = pt.linspace(1 / n_evals, 1, n_evals)

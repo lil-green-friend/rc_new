@@ -2,7 +2,7 @@ import numpy as np
 import torch as pt
 import torch.nn as nn
 import torch.nn.utils.parametrize as parametrize
-from utils.reckon_wrapper import RECKON_Wrapper
+from .reckon_wrapper import RECKON_Wrapper
 
 pt.autograd.set_grad_enabled(False)
 
@@ -191,3 +191,12 @@ def get_param_offset_and_size(model: nn.Module):
         d[n] = (offset, p_size)
 
     return d
+
+def set_params(model, vector, bs):
+    pointer = 0
+    for p in model.parameters():
+        num = p.numel() // bs
+        p.data = vector[:, pointer:pointer+num].view_as(p)
+        pointer += num
+
+    model.update_parametrizations()

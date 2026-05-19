@@ -1,7 +1,7 @@
 import torch as pt
 import torch.nn as nn
 import torch.nn.utils.parametrize as parametrize
-from utils.RC_torch import RECKON
+from .RC_torch import RECKON
 
 
 
