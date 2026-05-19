@@ -1670,7 +1670,7 @@ class RECKON(ODIN):
             MSB = x.floor()
             LSB = x - MSB
             UP = (pt.rand_like(x) < pt.abs(LSB))
-            return MSB + pt.sign(x) * UP
+            return (MSB + pt.sign(x) * UP).to(self.precision)
         else:
             return pt.round(x)
 
