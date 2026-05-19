@@ -59,7 +59,7 @@ class UpdateThr_OutRec(nn.Module):
         t_out = x[..., 0:1]
         t_res = x[..., 1:2]
         t = pt.hstack([t_out.repeat(1, self.base.n_out), t_res.repeat(1, self.base.n_rec)])
-        self.base.net.threshold = t
+        self.base.net._threshold = t
         return x
 
 class UpdateWin(nn.Module):
