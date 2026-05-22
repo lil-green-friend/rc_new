@@ -41,7 +41,7 @@ if __name__ == "__main__":
         "som.weights": weights
     }
 
-    model = MyModel(batch_size, device, 8, 4, 20, 32, reservoir_n_in=weights.shape[0])
+    model = MyModel(batch_size, device, 8, 4, 20, 32, reservoir_n_in=weights.shape[0], reservoir_n=128)
     model.load_state_dict(state_dict, strict=False)
 
     env = LLWrapper(batch_size, n_threads, device)
