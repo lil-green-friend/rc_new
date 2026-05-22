@@ -1527,6 +1527,7 @@ class RECKON(ODIN):
             w_abs_max = 2 ** 7 - 1,
             stochastic_rounding = True,
             reset_by_subtraction = True,
+            constant_leak = False,
             refractory_period = None,
             spiking_readout = True,
             learn_rate = None,
@@ -1604,6 +1605,15 @@ class RECKON(ODIN):
             self.trace_inp = pt.zeros(self._bs, self.n_input)
 
         self.stochastic = stochastic_rounding
+        self.constant_leak = constant_leak
+
+    @property
+    def leak(self):
+        return self._leak
+    
+    @leak.setter
+    def leak(self, value):
+        self._leak = value
 
     @property
     def tau(self):
@@ -1758,7 +1768,12 @@ class RECKON(ODIN):
             self.h -= self.threshold * self.o
         else:
             self.h[self.o == 1] = self.reset
-        self.h = self.round(self._alpha * self.h, stochastic=self.stochastic)
+
+        if self.constant_leak:
+            h_tmp = self.round(pt.clip(pt.abs(self.h) - self._leak, min=0), stochastic=self.stochastic)
+            self.h = pt.where(self.h >= 0, h_tmp, -h_tmp)
+        else:
+            self.h = self.round(self._alpha * self.h, stochastic=self.stochastic)
 
         if self._ref:
             self.t_last_spike += 1
@@ -1878,7 +1893,12 @@ class RECKON(ODIN):
                 h[t + 1] -= self.threshold * o[t + 1]
             else:
                 h[t + 1, o[t + 1] == 1] = self.reset
-            h[t + 1] = self.round(self._alpha * h[t + 1], stochastic=self.stochastic)
+            if self.constant_leak:
+                h_tmp = self.round(pt.clip(pt.abs(h[t + 1]) - self._leak, min=0), stochastic=self.stochastic)
+                h[t + 1] = pt.where(h[t + 1] >= 0, h_tmp, -h_tmp)
+            else:
+                h[t + 1] = self.round(self._alpha * h[t + 1], stochastic=self.stochastic)
+             
 
             if self._ref:
                 self.t_last_spike += 1

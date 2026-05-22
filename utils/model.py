@@ -102,15 +102,16 @@ class MyModel(nn.Module):
             sparsity = [self.reservoir_sparsity.item()],
             mask_sparsity = create_sparsity_mask(self.reservoir_n.item(), self.reservoir_sparsity.item()),
             stochastic_rounding = True,
+            constant_leak = True,
             uniform_weights = True,
             device = device,
             )
         
         parametrize.register_parametrization(self, "beta", BoundedConstraint_Linear(1, 20))
         parametrize.register_parametrization(self, "input_res", LowerBoundedConstraint_Linear(0))
-        parametrize.register_parametrization(self.chip, "tau", 
-        LowerBoundedConstraint_Linear(1))
-        parametrize.register_parametrization(self.chip, "tau", IntegerConstraint())
+        parametrize.register_parametrization(self.chip, "leak", 
+        BoundedConstraint_Linear(0, 32))
+        parametrize.register_parametrization(self.chip, "leak", IntegerConstraint())
         parametrize.register_parametrization(self.chip, "thr", BoundedConstraint_Linear(1, 127))
         parametrize.register_parametrization(self.chip, "thr", IntegerConstraint())
         parametrize.register_parametrization(self.chip, "Win_scale", BoundedConstraint_Linear(-7, 7))
@@ -122,7 +123,7 @@ class MyModel(nn.Module):
     def update_parametrizations(self):
         self.beta
         self.input_res
-        self.chip.tau
+        self.chip.leak
         self.chip.thr
         self.chip.Win_scale
         self.chip.Wout

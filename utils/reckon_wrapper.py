@@ -17,7 +17,7 @@ class RECKON_Wrapper(nn.Module):
         self.register_buffer("n_out", pt.tensor(self.net.n_out))
         self.register_buffer("n_rec", self.n_res - self.n_out)
 
-        self.tau = nn.Parameter(pt.empty((self.net._bs)))
+        self.leak = nn.Parameter(pt.empty((self.net._bs)))
         self.thr = nn.Parameter(pt.empty((self.net._bs, 2)))
         self.Win_scale = nn.Parameter(pt.empty((self.net._bs, 2)))
         self.Wout = nn.Parameter(pt.empty((self.net._bs, self.n_out, self.n_rec))) # only positive weights, sign is handled by mask_EI
@@ -33,20 +33,20 @@ class RECKON_Wrapper(nn.Module):
         return pt.stack([self.net.forward(poisson_inputs=x[:, i, :]) for i in range(x.shape[1])], dim=-1)
 
     def set_parametrizations(self):
-        parametrize.register_parametrization(self, "tau", UpdateTau(self))
+        parametrize.register_parametrization(self, "leak", UpdateLeak(self))
         parametrize.register_parametrization(self, "thr", UpdateThr_OutRec(self))
         parametrize.register_parametrization(self, "Win_scale", UpdateWin(self))
         parametrize.register_parametrization(self, "Wout", UpdateWout(self))
         parametrize.register_parametrization(self, "Wrec", UpdateWrec(self))
 
 
-class UpdateTau(nn.Module):
+class UpdateLeak(nn.Module):
     def __init__(self, base):
         super().__init__()
         object.__setattr__(self, "base", base)
 
     def forward(self, x):
-        self.base.net.tau = x[:, None]
+        self.base.net.leak = x[:, None]
         return x
 
 
