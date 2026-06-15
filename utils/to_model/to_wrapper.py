@@ -46,6 +46,7 @@ class TinyOdin_Wrapper(nn.Module):
                                                        self.input_spike_interval * len(spike_idx), 
                                                        self.input_spike_interval)
             self.sim.all_neuron_leakage_event()
+            self.sim.cycle_clk(512)
             spike_list = pt.from_numpy(self.sim.read_output_spikes()).to(pt.long)
             counts = pt.bincount(spike_list, minlength=256).to(pt.int8)
             outputs.append(counts)
