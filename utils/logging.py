@@ -86,6 +86,12 @@ class HDF5Backend():
         dataset[idx] = value
         self.paths[path]["idx"] += 1 
 
+    def write_idx(self, path, idx, value):
+        if hasattr(value, "detach") and hasattr(value, "cpu") and hasattr(value, "numpy"):
+            value = value.detach().cpu().numpy()
+        dataset = self.f[path]
+        dataset[*idx] = value
+
 class Logger:
     def __init__(self, backend):
         self.entries = {}

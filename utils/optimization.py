@@ -7,7 +7,7 @@ from .model import get_n_params, get_param_offset_and_size, set_params
 import glob
 
 
-def evaluate(model, env, params, n_evals, max_frames, device="cpu"):
+def evaluate(model, env, params, n_evals, max_frames, device="cpu", logger=None, ctx=None):
     w = pt.linspace(1 / n_evals, 1, n_evals)
     w = w / pt.sum(w)
     # TODO with torch.inference_mode() ???
@@ -28,7 +28,10 @@ def evaluate(model, env, params, n_evals, max_frames, device="cpu"):
     obs = env.reset()
     with parametrize.cached():
         for f in range(max_frames):
-            action, activity = model(obs)            
+            action, activity = model(obs)
+            if logger is not None:
+                ctx.eval_locals = locals()
+                logger.emit("eval__after_forward", ctx)
             obs, rew, term, _ = env.step(action)
             rewards[f] = rew
             action_prob[f] = action > 0
