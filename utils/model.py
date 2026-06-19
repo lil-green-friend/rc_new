@@ -1,3 +1,4 @@
+import inspect
 import numpy as np
 import torch as pt
 import torch.nn as nn
@@ -201,3 +202,14 @@ def set_params(model, vector, bs):
         pointer += num
 
     model.update_parametrizations()
+
+
+def instanciate_model(source_path, batch_size=1, device="cpu"):
+    state_dict = pt.load(source_path, map_location=pt.device(device))
+    # Filter sd to only include keys that match MyModel's __init__ parameters
+    model_init_params = inspect.signature(MyModel.__init__).parameters
+    filtered_sd = {k: v for k, v in state_dict.items() if k in model_init_params}
+
+    m = MyModel(batch_size, device, **filtered_sd)
+    m.load_state_dict(state_dict, strict=False)
+    return m
