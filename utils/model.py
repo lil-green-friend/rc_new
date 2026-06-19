@@ -115,7 +115,8 @@ class MyModel(nn.Module):
         parametrize.register_parametrization(self.chip, "leak", IntegerConstraint())
         parametrize.register_parametrization(self.chip, "thr", BoundedConstraint_Linear(1, 127))
         parametrize.register_parametrization(self.chip, "thr", IntegerConstraint())
-        parametrize.register_parametrization(self.chip, "Win_scale", BoundedConstraint_Linear(-7, 7))
+        parametrize.register_parametrization(self.chip, "Win_scale", BoundedConstraint_Linear(0, 7))
+        parametrize.register_parametrization(self.chip, "Win_bias", BoundedConstraint_Linear(-7, 7))
         parametrize.register_parametrization(self.chip, "Wout", BoundedConstraint_Cos(0, 7))
         self.chip.set_parametrizations()
 
@@ -127,6 +128,7 @@ class MyModel(nn.Module):
         self.chip.leak
         self.chip.thr
         self.chip.Win_scale
+        self.chip.Win_bias
         self.chip.Wout
         self.chip.Wrec
 

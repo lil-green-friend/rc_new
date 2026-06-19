@@ -19,7 +19,10 @@ class RECKON_Wrapper(nn.Module):
 
         self.leak = nn.Parameter(pt.empty((self.net._bs)))
         self.thr = nn.Parameter(pt.empty((self.net._bs, 2)))
-        self.Win_scale = nn.Parameter(pt.empty((self.net._bs, 2)))
+        self.Win_scale = nn.Parameter(pt.empty((self.net._bs,)))
+        object.__setattr__(self, "_Win_scale", pt.empty((self.net._bs,)))
+        self.Win_bias = nn.Parameter(pt.empty((self.net._bs,)))
+        object.__setattr__(self, "_Win_bias", pt.empty((self.net._bs,)))
         self.Wout = nn.Parameter(pt.empty((self.net._bs, self.n_out, self.n_rec))) # only positive weights, sign is handled by mask_EI
 
         Win_0 = pt.distributions.Beta(0.5, 0.5).sample(self.net.Win[0].shape) * 2 - 1
@@ -35,7 +38,8 @@ class RECKON_Wrapper(nn.Module):
     def set_parametrizations(self):
         parametrize.register_parametrization(self, "leak", UpdateLeak(self))
         parametrize.register_parametrization(self, "thr", UpdateThr_OutRec(self))
-        parametrize.register_parametrization(self, "Win_scale", UpdateWin(self))
+        parametrize.register_parametrization(self, "Win_scale", UpdateWin(self, "scale"))
+        parametrize.register_parametrization(self, "Win_bias", UpdateWin(self, "bias"))
         parametrize.register_parametrization(self, "Wout", UpdateWout(self))
         parametrize.register_parametrization(self, "Wrec", UpdateWrec(self))
 
@@ -63,13 +67,18 @@ class UpdateThr_OutRec(nn.Module):
         return x
 
 class UpdateWin(nn.Module):
-    def __init__(self, base):
+    def __init__(self, base, type):
         super().__init__()
         object.__setattr__(self, "base", base)
+        object.__setattr__(self, "type", type)
 
     def forward(self, x): 
-        scale = x[..., 0][..., None, None]
-        bias = x[..., 1][..., None, None]
+        if self.type=="scale":
+            scale = x[..., None, None]
+            bias = self.base._Win_bias[..., None, None]
+        else:
+            scale = self.base._Win_scale[..., None, None]
+            bias = x[..., None, None]
         Win = pt.zeros(self.base.net.Win.shape)
         Win[..., self.base.n_out:, :] = (self.base.Win_0[None, self.base.n_out:, :] * scale + bias)
         Win = pt.clip(Win.round(), -7, 7)
