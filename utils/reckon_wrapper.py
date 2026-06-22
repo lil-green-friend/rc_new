@@ -74,11 +74,12 @@ class UpdateWin(nn.Module):
 
     def forward(self, x): 
         if self.type=="scale":
-            scale = x[..., None, None]
-            bias = self.base._Win_bias[..., None, None]
+            self.base._Win_scale = x
         else:
-            scale = self.base._Win_scale[..., None, None]
-            bias = x[..., None, None]
+            self.base._Win_bias = x
+
+        scale = self.base._Win_scale[..., None, None]
+        bias = self.base._Win_bias[..., None, None]
         Win = pt.zeros(self.base.net.Win.shape)
         Win[..., self.base.n_out:, :] = (self.base.Win_0[None, self.base.n_out:, :] * scale + bias)
         Win = pt.clip(Win.round(), -7, 7)
