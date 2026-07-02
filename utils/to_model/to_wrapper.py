@@ -45,6 +45,7 @@ class TinyOdin_Wrapper(nn.Module):
             self.sim.send_neuron_events_equally_spaced(spike_idx, self.sim.get_time() + 
                                                        self.input_spike_interval * len(spike_idx), 
                                                        self.input_spike_interval)
+            self.sim.set_neuron_disable(np.zeros(256))
             self.sim.all_neuron_leakage_event()
             self.sim.cycle_clk(512)
             spike_list = pt.from_numpy(self.sim.read_output_spikes()).to(pt.long)
