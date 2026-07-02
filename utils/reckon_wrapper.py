@@ -25,7 +25,7 @@ class RECKON_Wrapper(nn.Module):
         object.__setattr__(self, "_Win_bias", pt.empty((self.net._bs,)))
         self.Wout = nn.Parameter(pt.empty((self.net._bs, self.n_out, self.n_rec))) # only positive weights, sign is handled by mask_EI
 
-        Win_0 = pt.distributions.Beta(0.5, 0.5).sample(self.net.Win[0].shape) * 2 - 1
+        Win_0 = pt.randint(-7, 8, self.net.Win[0].shape, dtype=pt.float32)
         Win_0[..., :self.n_out, :] = 0
         self.register_buffer("Win_0", Win_0)        
         self.register_buffer("Wrec", pt.tensor(self.net.Wrec[0]))
@@ -78,11 +78,14 @@ class UpdateWin(nn.Module):
         else:
             self.base._Win_bias = x
 
-        scale = self.base._Win_scale[..., None, None]
-        bias = self.base._Win_bias[..., None, None]
+        scale = self.base._Win_scale[..., None, None].to(int) # using integers for bitshift
+        bias = self.base._Win_bias[..., None, None].to(int)
+        Win_0 = self.base.Win_0[None, self.base.n_out:, :].to(int)
+
         Win = pt.zeros(self.base.net.Win.shape)
-        Win[..., self.base.n_out:, :] = (self.base.Win_0[None, self.base.n_out:, :] * scale + bias)
-        Win = pt.clip(Win.round(), -7, 7)
+        Win[..., self.base.n_out:, :] = pt.sign(Win_0) * (pt.abs(Win_0) >> scale) + bias
+        Win = pt.clip(Win, -7, 7).to(pt.float32)
+
         self.base.net.set_weights(Win, 'in', overwrite=True, respect_sparsity=False)
         return x
 
