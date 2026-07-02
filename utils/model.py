@@ -93,7 +93,7 @@ class MyModel(nn.Module):
         self.input_res = nn.Parameter(pt.empty((self.bs, self.n_inputs)))
 
         self.som = SOM_layer(self.n_inputs, self.reservoir_n_in)
-        self.spike_gen = PoissonSpikeGeneration(20)
+        self.spike_gen = PoissonSpikeGeneration(self.steps_per_frame)
         self.chip = RECKON_Wrapper(self.bs,
             n_channels_in=1,
             n_reservoir=self.reservoir_n.item(),
