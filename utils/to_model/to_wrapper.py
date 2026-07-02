@@ -59,7 +59,8 @@ class TinyOdin_Wrapper(nn.Module):
         parametrize.register_parametrization(self, "Wout", UpdateWout(self))
         parametrize.register_parametrization(self, "Wrec", UpdateWrec(self))
 
-    def init_sim(self, spi_open_loop=False, spi_aer_src_ctrl_nneur=False, spi_max_neur=255):
+    @staticmethod
+    def init_sim(spi_open_loop=False, spi_aer_src_ctrl_nneur=False, spi_max_neur=255):
         sim = to.Simulator()
         # ensure 
         sim.set_sck(0)
@@ -69,6 +70,12 @@ class TinyOdin_Wrapper(nn.Module):
         sim.set_aerout_ack(0)
         sim.reset()
         sim.cycle_clk(100)
+
+        sim.set_config(to.SpiConfigRegisterIndex.SPI_OPEN_LOOP, True)
+        sim.write_neuron_memory(np.arange(256), thr=np.ones(256), core=np.zeros(256))
+        sim.cycle_clk(1000)
+        sim.set_neuron_core(np.zeros(256))
+        
         # reset to stop it from spiking
         sim.read_output_spikes() # consume any spikes generated before the reset
         # set configs

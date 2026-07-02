@@ -25,6 +25,10 @@ def evaluate(model, env, params, n_evals, max_frames, device="cpu", logger=None,
     last_term = pt.zeros(bs, dtype=pt.int, device=device) - 1
     term_count = pt.zeros(bs, dtype=pt.int, device=device)
     
+    if logger is not None:
+        ctx.eval_locals = locals()
+        logger.emit("eval__before_eval", ctx)
+
     obs = env.reset()
     with parametrize.cached():
         for f in range(max_frames):

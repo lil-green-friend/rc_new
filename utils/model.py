@@ -182,15 +182,14 @@ def get_n_params(model: nn.Module):
     return sum(p.numel() for p in model.parameters()) // model.bs
 
 def get_param_offset_and_size(model: nn.Module):
-    pointer = 0
+    offset = 0
     d = {}
     for n, p in model.named_parameters():
-        offset = pointer
-        p_size = (p.numel() // model.bs)
-        pointer += p_size
+        p_size = p.numel() // model.bs
         n = n.replace(".original", "")
         n = n.replace("parametrizations.", "")
         d[n] = (offset, p_size)
+        offset += p_size
 
     return d
 
