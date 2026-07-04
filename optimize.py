@@ -8,7 +8,7 @@ from utils.ll_wrapper import LLWrapper
 from utils.cosyne_wrapper import CosyneWrapper
 from utils.logging import Context, Logger, HDF5Backend, SustainedCondition
 from utils.optimization import init_directories, write_pop_evals, write_map_evals, write_params, write_final_params, write_replaced_params, copy_source_files, create_fields, evaluate
-from evotorch.algorithms import MAPElites
+from evotorch_custom.algorithms import MAPElites
 
        
 if __name__ == "__main__":
