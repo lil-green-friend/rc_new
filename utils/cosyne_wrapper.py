@@ -1,6 +1,6 @@
 import torch as pt
-from evotorch import Problem
-from evotorch.algorithms import Cosyne
+from evotorch_custom import Problem
+from evotorch_custom.algorithms import Cosyne
 
 class CosyneWrapper:
     def __init__(self,
