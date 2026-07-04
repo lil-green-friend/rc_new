@@ -92,7 +92,7 @@ class TinyOdinModel(nn.Module):
         self.input_res = nn.Parameter(pt.empty((self.bs, self.n_inputs)))
 
         self.som = SOM_layer(self.n_inputs, self.reservoir_n_in)
-        self.spike_gen = PoissonSpikeGeneration(20)
+        self.spike_gen = PoissonSpikeGeneration(self.steps_per_frame)
         self.chip = TinyOdin_Wrapper(self.bs,
             n_res=self.reservoir_n,
             n_out=self.reservoir_n_out,
@@ -109,7 +109,8 @@ class TinyOdinModel(nn.Module):
         parametrize.register_parametrization(self.chip, "leak", IntegerConstraint())
         parametrize.register_parametrization(self.chip, "thr", BoundedConstraint_Linear(1, 127))
         parametrize.register_parametrization(self.chip, "thr", IntegerConstraint())
-        parametrize.register_parametrization(self.chip, "Win_scale", BoundedConstraint_Linear(-7, 7))
+        parametrize.register_parametrization(self.chip, "Win_scale", BoundedConstraint_Linear(0, 7))
+        parametrize.register_parametrization(self.chip, "Win_bias", BoundedConstraint_Linear(-7, 7))
         parametrize.register_parametrization(self.chip, "Wout", BoundedConstraint_Cos(0, 7))
         self.chip.set_parametrizations()
 
@@ -121,6 +122,7 @@ class TinyOdinModel(nn.Module):
         self.chip.leak
         self.chip.thr
         self.chip.Win_scale
+        self.chip.Win_bias
         self.chip.Wout
         self.chip.Wrec
 
@@ -176,15 +178,14 @@ def get_n_params(model: nn.Module):
     return sum(p.numel() for p in model.parameters()) // model.bs
 
 def get_param_offset_and_size(model: nn.Module):
-    pointer = 0
+    offset = 0
     d = {}
     for n, p in model.named_parameters():
-        offset = pointer
-        p_size = (p.numel() // model.bs)
-        pointer += p_size
+        p_size = p.numel() // model.bs
         n = n.replace(".original", "")
         n = n.replace("parametrizations.", "")
         d[n] = (offset, p_size)
+        offset += p_size
 
     return d
 
