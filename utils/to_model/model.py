@@ -77,7 +77,7 @@ class SOM_layer(nn.Module):
         return x
 
 class TinyOdinModel(nn.Module):
-    def __init__(self, batch_size, device, n_inputs, n_actions, steps_per_frame, excitation_coefficient, input_spike_interval, reservoir_n_in=128, reservoir_n=256, reservoir_n_out=32, reservoir_sparsity=0.8):
+    def __init__(self, batch_size, device, n_inputs, n_actions, steps_per_frame, excitation_coefficient, input_spike_interval, reservoir_n_in=128, reservoir_n=256, reservoir_n_out=32, reservoir_sparsity=0.8, n_cpu_cores=None):
         super().__init__()
 
         buffers = ["n_inputs", "n_actions", "steps_per_frame", "excitation_coefficient", "input_spike_interval", "reservoir_n_in", "reservoir_n", "reservoir_n_out", "reservoir_sparsity"]
@@ -100,6 +100,7 @@ class TinyOdinModel(nn.Module):
             n_in=self.reservoir_n_in,
             input_spike_interval=self.input_spike_interval,
             device = device,
+            n_cpu_cores=n_cpu_cores,
             )
         
         parametrize.register_parametrization(self, "beta", BoundedConstraint_Linear(1, 20))

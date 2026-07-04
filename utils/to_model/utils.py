@@ -5,15 +5,14 @@ import torch as pt
 import json
 from .model import TinyOdinModel
 
-def instanciate_model(source_path, input_spike_interval, batch_size=1, device="cpu"):
+def instanciate_model(source_path, input_spike_interval, batch_size=1, device="cpu", n_cpu_cores=None):
     state_dict = pt.load(source_path, map_location=pt.device(device))
     # Filter sd to only include keys that match MyModel's __init__ parameters
     model_init_params = inspect.signature(TinyOdinModel.__init__).parameters
     filtered_sd = {k: v for k, v in state_dict.items() if k in model_init_params}
     filtered_sd["input_spike_interval"] = input_spike_interval
 
-
-    m = TinyOdinModel(batch_size, device, **filtered_sd)
+    m = TinyOdinModel(batch_size, device, n_cpu_cores=n_cpu_cores, **filtered_sd)
     m.load_state_dict(state_dict, strict=False)
     return m
 
