@@ -65,7 +65,7 @@ class TinyOdin_Wrapper(nn.Module):
 
     def forward(self, x):
         batch_outputs = self._map_batches(lambda batch_idx: self._run_batch(x, batch_idx))
-        return pt.stack(batch_outputs, dim=0).clamp(max=1)
+        return pt.stack(batch_outputs, dim=0).clamp(max=1).to(self.device)
 
     def set_parametrizations(self):
         parametrize.register_parametrization(self, "leak", UpdateLeak(self))
@@ -145,9 +145,12 @@ class UpdateWin(nn.Module):
         else:
             self.base._Win_bias = x
 
-        scale = self.base._Win_scale[..., None, None]
-        bias = self.base._Win_bias[..., None, None]
-        Win = (self.base.Win_0[None, self.base.n_out:, :] * scale + bias)
+        device = self.base.device
+        
+        scale = self.base._Win_scale[..., None, None].to(device)
+        bias = self.base._Win_bias[..., None, None].to(device)
+        Win_0 = self.base.Win_0[None, self.base.n_out:, :].to(device)
+        Win = (Win_0 * scale + bias)
         Win = pt.clip(Win.round(), -7, 7)
         Win = Win.to(pt.int8)
         self.base._Wrec[:, self.base.n_res:self.base.n_res+self.base.n_in,self.base.n_out:self.base.n_res] = Win.transpose(1, 2)

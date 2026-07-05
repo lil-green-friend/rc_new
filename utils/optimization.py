@@ -8,7 +8,7 @@ import glob
 
 
 def evaluate(model, env, params, n_evals, max_frames, device="cpu", logger=None, ctx=None):
-    w = pt.linspace(1 / n_evals, 1, n_evals)
+    w = pt.linspace(1 / n_evals, 1, n_evals).to(device)
     w = w / pt.sum(w)
     # TODO with torch.inference_mode() ???
     
