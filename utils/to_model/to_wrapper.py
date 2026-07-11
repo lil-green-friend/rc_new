@@ -1,9 +1,27 @@
 import numpy as np
-from concurrent.futures import ThreadPoolExecutor
 import torch as pt
 import torch.nn as nn
 import torch.nn.utils.parametrize as parametrize
 import tinyodin as to
+from .sim_pool import SimPool
+
+
+def _forward_batch(sim, x, n_res, input_spike_interval):
+    outputs = []
+    for i in range(x.shape[0]):
+        spike_idx = np.nonzero(x[i])[0] + n_res
+        sim.send_neuron_events_equally_spaced(
+            spike_idx,
+            sim.get_time() + input_spike_interval * len(spike_idx),
+            input_spike_interval,
+        )
+        sim.all_neuron_leakage_event()
+        sim.cycle_clk(512)
+        spike_list = sim.read_output_spikes()
+        counts = np.bincount(spike_list, minlength=256)
+        outputs.append(counts)
+    return np.stack(outputs, axis=-1)
+
 
 class TinyOdin_Wrapper(nn.Module):
     """Allows setting parameters from float values"""
@@ -13,7 +31,6 @@ class TinyOdin_Wrapper(nn.Module):
         self.n_actions = n_actions
         self.device = device
         self.n_cpu_cores = max(1, min(self.bs, self.bs if n_cpu_cores is None else int(n_cpu_cores)))
-        self._executor = ThreadPoolExecutor(max_workers=self.n_cpu_cores)
         # sparsity = [self.reservoir_sparsity.item()],
         # mask_sparsity = create_sparsity_mask(self.reservoir_n.item(), self.reservoir_sparsity.item()),
         # uniform_weights = True,
@@ -23,8 +40,7 @@ class TinyOdin_Wrapper(nn.Module):
         self.register_buffer("n_out", n_out)
         self.register_buffer("n_rec", self.n_res - self.n_out)
         self.register_buffer("input_spike_interval", input_spike_interval)
-        self.sims = [self.init_sim(spi_max_neur=n_res - 1) for _ in range(self.bs)]
-        self.sim = self.sims[0]
+        self.sim_pool = SimPool(self.bs, self.init_sim, _forward_batch, n_res=self.n_res.item(), input_spike_interval=self.input_spike_interval.item())
 
         self.leak = nn.Parameter(pt.empty((self.bs,)))
         self.thr = nn.Parameter(pt.empty((self.bs, 2)))
@@ -41,31 +57,10 @@ class TinyOdin_Wrapper(nn.Module):
         self.register_buffer("Wrec", pt.empty(self.n_res, self.n_res))
         self.register_buffer("mask_EI", pt.empty((self.n_res,)))
 
-    def _map_batches(self, fn):
-        if self.n_cpu_cores == 1:
-            return [fn(batch_idx) for batch_idx in range(self.bs)]
-        return list(self._executor.map(fn, range(self.bs)))
-
-    def _run_batch(self, x, batch_idx):
-        sim = self.sims[batch_idx]
-        outputs = []
-        for i in range(x.shape[1]):
-            inputs = x[batch_idx, i, :]
-            spike_idx = pt.nonzero(inputs) + self.n_res
-            spike_idx = spike_idx.squeeze(-1).cpu().numpy()
-            sim.send_neuron_events_equally_spaced(spike_idx, sim.get_time() +
-                                                   self.input_spike_interval * len(spike_idx),
-                                                   self.input_spike_interval)
-            sim.all_neuron_leakage_event()
-            sim.cycle_clk(512)
-            spike_list = pt.from_numpy(sim.read_output_spikes()).to(pt.long)
-            counts = pt.bincount(spike_list, minlength=256).to(pt.int8)
-            outputs.append(counts)
-        return pt.stack(outputs, dim=-1)
-
     def forward(self, x):
-        batch_outputs = self._map_batches(lambda batch_idx: self._run_batch(x, batch_idx))
-        return pt.stack(batch_outputs, dim=0).clamp(max=1).to(self.device)
+        batch_outputs = self.sim_pool.map("forward", x)
+        batch_outputs = [pt.from_numpy(x) for x in batch_outputs] 
+        return pt.stack(batch_outputs, dim=0).clamp(max=1)
 
     def set_parametrizations(self):
         parametrize.register_parametrization(self, "leak", UpdateLeak(self))
@@ -76,9 +71,16 @@ class TinyOdin_Wrapper(nn.Module):
         parametrize.register_parametrization(self, "Wrec", UpdateWrec(self))
 
     def close(self):
-        self._executor.shutdown(wait=True, cancel_futures=True)
-        print("shut down")
+        self.sim_pool.close()
         
+    def _update_neuron_memory(self, neuron_idx=None, disable=None, leak_str=None, thr=None, core=None):
+        if neuron_idx is None:
+            neuron_idx = pt.arange(self.n_res).unsqueeze(0).repeat(self.bs, 1).cpu().numpy()
+        kwargs = {k: v.cpu().numpy() for k, v in zip(["disable", "leak_str", "thr", "core"], [disable, leak_str, thr, core]) if v is not None}
+        self.sim_pool.map("write_neuron_memory", neuron_idx, **kwargs)
+
+    def _update_synapse_memory(self, w):
+        self.sim_pool.map("set_synapse_memory", w.cpu().numpy())
 
     @staticmethod
     def init_sim(spi_open_loop=False, spi_aer_src_ctrl_nneur=False, spi_max_neur=255):
@@ -112,10 +114,8 @@ class UpdateLeak(nn.Module):
         object.__setattr__(self, "base", base)
 
     def forward(self, x):
-        neuron_idx = pt.arange(self.base.n_res)
         leak = x[:, None].repeat(1, self.base.n_res)
-        for batch_idx, sim in enumerate(self.base.sims):
-            sim.write_neuron_memory(neuron_idx.cpu().numpy(), leak_str=leak[batch_idx].cpu().numpy())
+        self.base._update_neuron_memory(leak_str=leak)
         return x
 
 
@@ -127,10 +127,8 @@ class UpdateThr_OutRec(nn.Module):
     def forward(self, x):
         t_out = x[..., 0:1]
         t_res = x[..., 1:2]
-        neuron_idx = pt.arange(self.base.n_res)
         thr = pt.hstack([t_out.repeat(1, self.base.n_out), t_res.repeat(1, self.base.n_rec)])
-        for batch_idx, sim in enumerate(self.base.sims):
-            sim.write_neuron_memory(neuron_idx.cpu().numpy(), thr=thr[batch_idx].cpu().numpy())
+        self.base._update_neuron_memory(thr=thr)
         return x
 
 class UpdateWin(nn.Module):
@@ -154,8 +152,7 @@ class UpdateWin(nn.Module):
         Win = pt.clip(Win.round(), -7, 7)
         Win = Win.to(pt.int8)
         self.base._Wrec[:, self.base.n_res:self.base.n_res+self.base.n_in,self.base.n_out:self.base.n_res] = Win.transpose(1, 2)
-        for batch_idx, sim in enumerate(self.base.sims):
-            sim.set_synapse_memory(self.base._Wrec[batch_idx].cpu().numpy())
+        self.base._update_synapse_memory(self.base._Wrec)
         return x
 
 class UpdateWout(nn.Module):
@@ -168,8 +165,7 @@ class UpdateWout(nn.Module):
         Wout = pt.clip(Wout.round(), -7, 7)
         Wout = Wout.to(pt.int8)
         self.base._Wrec[:, self.base.n_out:self.base.n_res,:self.base.n_out] = Wout.transpose(1, 2)
-        for batch_idx, sim in enumerate(self.base.sims):
-            sim.set_synapse_memory(self.base._Wrec[batch_idx].cpu().numpy())
+        self.base._update_synapse_memory(self.base._Wrec)
         return x
 
 class UpdateWrec(nn.Module):
@@ -184,6 +180,5 @@ class UpdateWrec(nn.Module):
         # Wres[:, :self.base.n_out, :self.base.n_out] = 0
         Wres[:, self.base.n_out:,:self.base.n_out] = self.base._Wrec[:, self.base.n_out:self.base.n_res,:self.base.n_out]
         self.base._Wrec[:, :self.base.n_res, :self.base.n_res] = Wres
-        for batch_idx, sim in enumerate(self.base.sims):
-            sim.set_synapse_memory(self.base._Wrec[batch_idx].cpu().numpy())
+        self.base._update_synapse_memory(self.base._Wrec)
         return x
