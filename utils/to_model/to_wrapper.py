@@ -58,8 +58,8 @@ class TinyOdin_Wrapper(nn.Module):
         self.register_buffer("mask_EI", pt.empty((self.n_res,)))
 
     def forward(self, x):
-        batch_outputs = self.sim_pool.map("forward", x)
-        batch_outputs = [pt.from_numpy(x) for x in batch_outputs] 
+        batch_outputs = self.sim_pool.map("forward", x.cpu().numpy())
+        batch_outputs = [pt.from_numpy(x).to(self.device) for x in batch_outputs] 
         return pt.stack(batch_outputs, dim=0).clamp(max=1)
 
     def set_parametrizations(self):
