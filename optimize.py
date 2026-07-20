@@ -38,10 +38,13 @@ if __name__ == "__main__":
     state_dict = {
         "som.input_means": means,
         "som.input_stds": stds,
-        "som.weights": weights
+        "som.weights": weights,
+        "spike_gen.target_input_activity": pt.full((batch_size,), 16),
+        "spike_gen.input_activity_tau": pt.full((batch_size,), 10),
+        "spike_gen.input_activity_bias_init": pt.full((batch_size,), 0.6),
     }
 
-    model = MyModel(batch_size, device, 8, 4, 20, 32, reservoir_n_in=weights.shape[0], reservoir_n=128)
+    model = MyModel(batch_size, device, 8, 4, 20, reservoir_n_in=weights.shape[0], reservoir_n=128)
     model.load_state_dict(state_dict, strict=False)
 
     env = LLWrapper(batch_size, n_threads, device)

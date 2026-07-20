@@ -65,6 +65,32 @@ class PoissonSpikeGeneration(nn.Module):
         x[x > 1] = 1
         return x.bool()
 
+class AdaptivePoissonSpikeGeneration(PoissonSpikeGeneration):
+    def __init__(self, n_sub_steps, batch_size):
+        """Converts float point to series of n_sub_steps spike/non-spike events
+        """
+        super().__init__(n_sub_steps)
+        self.register_buffer("target_input_activity", pt.empty(batch_size))
+        self.register_buffer("input_activity_tau", pt.empty(batch_size))
+        self.register_buffer("input_activity_bias_init", pt.empty(batch_size))
+        self.input_activity_low = self.target_input_activity
+        self.input_activity_bias = self.input_activity_bias_init
+
+    def forward(self, x):
+        x += self.input_activity_bias.unsqueeze(1)
+        x = pt.clamp(x, min=0.0)
+        x = super().forward(x)
+        s = x.shape[1]
+        # self.input_activity_low += 1/self.input_activity_tau * (self.input_activity_low - pt.sum(x, dim=(1, 2), dtype=pt.float)/s)
+        self.input_activity_bias += 1/self.input_activity_tau * (self.target_input_activity - pt.sum(x, dim=(1, 2), dtype=pt.float)/s)
+        return x
+    
+    def reset(self):
+        self.input_activity_low = self.target_input_activity
+        self.input_activity_bias = self.input_activity_bias_init
+
+
+
 class SOM_layer(nn.Module):
     def __init__(self, in_features, out_features):
         super().__init__()
@@ -78,10 +104,10 @@ class SOM_layer(nn.Module):
         return x
 
 class MyModel(nn.Module):
-    def __init__(self, batch_size, device, n_inputs, n_actions, steps_per_frame, excitation_coefficient, reservoir_n_in=128, reservoir_n=256, reservoir_n_out=32, reservoir_sparsity=0.8):
+    def __init__(self, batch_size, device, n_inputs, n_actions, steps_per_frame, reservoir_n_in=128, reservoir_n=256, reservoir_n_out=32, reservoir_sparsity=0.8):
         super().__init__()
 
-        buffers = ["n_inputs", "n_actions", "steps_per_frame", "excitation_coefficient", "reservoir_n_in", "reservoir_n", "reservoir_n_out", "reservoir_sparsity"]
+        buffers = ["n_inputs", "n_actions", "steps_per_frame", "reservoir_n_in", "reservoir_n", "reservoir_n_out", "reservoir_sparsity"]
         for k in buffers:
             v = locals()[k]
             v = pt.tensor(v) if not isinstance(v, pt.Tensor) else v
@@ -93,7 +119,7 @@ class MyModel(nn.Module):
         self.input_res = nn.Parameter(pt.empty((self.bs, self.n_inputs)))
 
         self.som = SOM_layer(self.n_inputs, self.reservoir_n_in)
-        self.spike_gen = PoissonSpikeGeneration(self.steps_per_frame)
+        self.spike_gen = AdaptivePoissonSpikeGeneration(self.steps_per_frame, self.bs)
         self.chip = RECKON_Wrapper(self.bs,
             n_channels_in=1,
             n_reservoir=self.reservoir_n.item(),
@@ -131,12 +157,13 @@ class MyModel(nn.Module):
         self.chip.Win_bias
         self.chip.Wout
         self.chip.Wrec
+        self.spike_gen.reset()
 
 
     def forward(self, x):
         x = pt.clip(x * self.input_res, -1, 1)
         x = self.som(x)
-        x = nn.functional.normalize(pt.clamp(x + 1, min=0.0), 1, dim=1) * self.excitation_coefficient
+        # x = nn.functional.normalize(pt.clamp(x + 1, min=0.0), 1, dim=1)
         x = self.spike_gen(x)
         activity = self.chip(x.to(self.chip.net.precision))
         x = activity[..., :self.reservoir_n_out, :].view(self.bs, self.n_inputs, self.n_actions, -1)
