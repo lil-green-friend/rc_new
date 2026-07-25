@@ -16,13 +16,13 @@ class RECKON_Wrapper(nn.Module):
         self.register_buffer("n_res", pt.tensor(self.net._N) )
         self.register_buffer("n_out", pt.tensor(self.net.n_out))
         self.register_buffer("n_rec", self.n_res - self.n_out)
+        self.register_buffer("Win_scale",pt.empty((self.net._bs,)))
+        object.__setattr__(self, "_Win_scale", pt.empty((self.net._bs,)))
+        self.register_buffer("Win_bias",pt.empty((self.net._bs,)))
+        object.__setattr__(self, "_Win_bias", pt.empty((self.net._bs,)))
 
         self.leak = nn.Parameter(pt.empty((self.net._bs)))
         self.thr = nn.Parameter(pt.empty((self.net._bs, 2)))
-        self.Win_scale = nn.Parameter(pt.empty((self.net._bs,)))
-        object.__setattr__(self, "_Win_scale", pt.empty((self.net._bs,)))
-        self.Win_bias = nn.Parameter(pt.empty((self.net._bs,)))
-        object.__setattr__(self, "_Win_bias", pt.empty((self.net._bs,)))
         self.Wout = nn.Parameter(pt.empty((self.net._bs, self.n_out, self.n_rec))) # only positive weights, sign is handled by mask_EI
 
         Win_0 = pt.distributions.Beta(0.5, 0.5).sample(self.net.Win[0].shape) * 2 - 1
