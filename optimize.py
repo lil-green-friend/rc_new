@@ -17,7 +17,7 @@ if __name__ == "__main__":
     n_agents = 60
     n_evals = 16
     max_frames = 1000
-    n_epochs = 3000
+    n_epochs = 5000
 
     if test_run:
         n_agents = 6

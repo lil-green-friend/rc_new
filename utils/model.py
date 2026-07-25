@@ -65,30 +65,32 @@ class PoissonSpikeGeneration(nn.Module):
         x[x > 1] = 1
         return x.bool()
 
-class AdaptivePoissonSpikeGeneration(PoissonSpikeGeneration):
-    def __init__(self, n_sub_steps, batch_size):
+class AdaptivePoissonSpikeGeneration(nn.Module):
+    def __init__(self, batch_size, n_sub_steps):
         """Converts float point to series of n_sub_steps spike/non-spike events
         """
-        super().__init__(n_sub_steps)
-        self.register_buffer("target_input_activity", pt.empty(batch_size))
-        self.register_buffer("input_activity_tau", pt.empty(batch_size))
-        self.register_buffer("input_activity_bias_init", pt.empty(batch_size))
-        self.input_activity_low = self.target_input_activity
-        self.input_activity_bias = self.input_activity_bias_init
+        super().__init__()
+        self.n_sub_steps = n_sub_steps
+        self.bs = batch_size
+        self.target_input_activity = nn.Parameter(pt.empty(self.bs))
+        self.input_activity_tau = nn.Parameter(pt.empty(self.bs))
+        self.input_activity_bias_init = nn.Parameter(pt.empty(self.bs))
+        self.reset()
 
     def forward(self, x):
-        x += self.input_activity_bias.unsqueeze(1)
-        x = pt.clamp(x, min=0.0)
-        x = super().forward(x)
-        s = x.shape[1]
-        # self.input_activity_low += 1/self.input_activity_tau * (self.input_activity_low - pt.sum(x, dim=(1, 2), dtype=pt.float)/s)
-        self.input_activity_bias += 1/self.input_activity_tau * (self.target_input_activity - pt.sum(x, dim=(1, 2), dtype=pt.float)/s)
-        return x
+        x = x.unsqueeze(1).expand(-1, self.n_sub_steps, -1).clone()
+        for i in range(x.shape[1]):
+            x[:, i] += self.input_activity_bias.unsqueeze(1)
+            x[:, i] = pt.clamp(x[:, i], min=0.0)
+            x[:, i] = pt.clamp(pt.poisson(x[:, i]), max=1)
+            self.input_activity_bias += 1/self.input_activity_tau * (self.target_input_activity - pt.sum(x[:, i], dim=1))
+        return x.bool()
     
-    def reset(self):
-        self.input_activity_low = self.target_input_activity
-        self.input_activity_bias = self.input_activity_bias_init
-
+    def reset(self, mask=None):
+        if mask is None:
+            self.input_activity_bias = self.input_activity_bias_init.data
+        else:
+            self.input_activity_bias[mask] = self.input_activity_bias_init.data[mask]
 
 
 class SOM_layer(nn.Module):
@@ -119,7 +121,7 @@ class MyModel(nn.Module):
         self.input_res = nn.Parameter(pt.empty((self.bs, self.n_inputs)))
 
         self.som = SOM_layer(self.n_inputs, self.reservoir_n_in)
-        self.spike_gen = AdaptivePoissonSpikeGeneration(self.steps_per_frame, self.bs)
+        self.spike_gen = AdaptivePoissonSpikeGeneration(self.bs, self.steps_per_frame)
         self.chip = RECKON_Wrapper(self.bs,
             n_channels_in=1,
             n_reservoir=self.reservoir_n.item(),
@@ -136,8 +138,10 @@ class MyModel(nn.Module):
         
         parametrize.register_parametrization(self, "beta", BoundedConstraint_Linear(1, 20))
         parametrize.register_parametrization(self, "input_res", LowerBoundedConstraint_Linear(0))
-        parametrize.register_parametrization(self.chip, "leak", 
-        BoundedConstraint_Linear(0, 32))
+        parametrize.register_parametrization(self.spike_gen, "target_input_activity", BoundedConstraint_Linear(6, 26))
+        parametrize.register_parametrization(self.spike_gen, "input_activity_tau", BoundedConstraint_Linear(4, 200))
+        parametrize.register_parametrization(self.spike_gen, "input_activity_bias_init", BoundedConstraint_Linear(-6, 6))
+        parametrize.register_parametrization(self.chip, "leak", BoundedConstraint_Linear(0, 32))
         parametrize.register_parametrization(self.chip, "leak", IntegerConstraint())
         parametrize.register_parametrization(self.chip, "thr", BoundedConstraint_Linear(1, 127))
         parametrize.register_parametrization(self.chip, "thr", IntegerConstraint())
@@ -161,6 +165,8 @@ class MyModel(nn.Module):
 
 
     def forward(self, x):
+        term = x[1]
+        x = x[0]
         x = pt.clip(x * self.input_res, -1, 1)
         x = self.som(x)
         # x = nn.functional.normalize(pt.clamp(x + 1, min=0.0), 1, dim=1)
@@ -169,6 +175,7 @@ class MyModel(nn.Module):
         x = activity[..., :self.reservoir_n_out, :].view(self.bs, self.n_inputs, self.n_actions, -1)
         x = pt.mean(x, dim=(1, 3), dtype=float) * (20 / self.steps_per_frame) # rate coding
         action = pt.distributions.Categorical(logits=self.beta[:, None] * x).sample() # softmax
+        self.spike_gen.reset(term)
         return action, activity
 
 def create_sparsity_mask(size, sparsity):
