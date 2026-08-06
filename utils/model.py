@@ -47,6 +47,15 @@ class LowerBoundedConstraint_Linear(nn.Module):
     def forward(self, x):
         return pt.abs(x) + self.lower
 
+class FixedPointConstraint(nn.Module):
+    def __init__(self, n_fractional_bits):
+        super().__init__()
+        self.n_fractional_bits = n_fractional_bits
+        self.scaling_factor = 2**self.n_fractional_bits
+
+    def forward(self, x):
+        return pt.round(x * self.scaling_factor) / self.scaling_factor
+
 def triangle(x: pt.Tensor):
     """
     realizes a periodic triangle function, osscilating between 0 and 1 with a period of 2
@@ -66,7 +75,7 @@ class PoissonSpikeGeneration(nn.Module):
         return x.bool()
 
 class AdaptivePoissonSpikeGeneration(nn.Module):
-    def __init__(self, batch_size, n_sub_steps):
+    def __init__(self, batch_size, n_sub_steps, n_fractional_bits):
         """Converts float point to series of n_sub_steps spike/non-spike events
         """
         super().__init__()
@@ -75,15 +84,18 @@ class AdaptivePoissonSpikeGeneration(nn.Module):
         self.target_input_activity = nn.Parameter(pt.empty(self.bs))
         self.input_activity_tau = nn.Parameter(pt.empty(self.bs))
         self.input_activity_bias_init = nn.Parameter(pt.empty(self.bs))
+        self.fixed_point_constraint = FixedPointConstraint(n_fractional_bits)
         self.reset()
 
     def forward(self, x):
         x = x.unsqueeze(1).expand(-1, self.n_sub_steps, -1).clone()
+        x = self.fixed_point_constraint(x)
         for i in range(x.shape[1]):
             x[:, i] += self.input_activity_bias.unsqueeze(1)
             x[:, i] = pt.clamp(x[:, i], min=0.0)
             x[:, i] = pt.clamp(pt.poisson(x[:, i]), max=1)
-            self.input_activity_bias += 1/self.input_activity_tau * (self.target_input_activity - pt.sum(x[:, i], dim=1))
+            self.input_activity_bias += self.fixed_point_constraint(1/self.input_activity_tau * (self.target_input_activity - pt.sum(x[:, i], dim=1)))
+
         return x.bool()
     
     def reset(self, mask=None):
@@ -120,8 +132,10 @@ class MyModel(nn.Module):
         self.beta = nn.Parameter(pt.empty((self.bs,)))
         self.input_res = nn.Parameter(pt.empty((self.bs, self.n_inputs)))
 
+        n_fractional_bits = 2
+
         self.som = SOM_layer(self.n_inputs, self.reservoir_n_in)
-        self.spike_gen = AdaptivePoissonSpikeGeneration(self.bs, self.steps_per_frame)
+        self.spike_gen = AdaptivePoissonSpikeGeneration(self.bs, self.steps_per_frame, n_fractional_bits)
         self.chip = RECKON_Wrapper(self.bs,
             n_channels_in=1,
             n_reservoir=self.reservoir_n.item(),
@@ -139,8 +153,11 @@ class MyModel(nn.Module):
         parametrize.register_parametrization(self, "beta", BoundedConstraint_Linear(1, 20))
         parametrize.register_parametrization(self, "input_res", LowerBoundedConstraint_Linear(0))
         parametrize.register_parametrization(self.spike_gen, "target_input_activity", BoundedConstraint_Linear(6, 26))
+        parametrize.register_parametrization(self.spike_gen, "target_input_activity", FixedPointConstraint(n_fractional_bits))
         parametrize.register_parametrization(self.spike_gen, "input_activity_tau", BoundedConstraint_Linear(4, 200))
+        parametrize.register_parametrization(self.spike_gen, "input_activity_tau", FixedPointConstraint(n_fractional_bits))
         parametrize.register_parametrization(self.spike_gen, "input_activity_bias_init", BoundedConstraint_Linear(-6, 6))
+        parametrize.register_parametrization(self.spike_gen, "input_activity_bias_init", FixedPointConstraint(n_fractional_bits))
         parametrize.register_parametrization(self.chip, "leak", BoundedConstraint_Linear(0, 32))
         parametrize.register_parametrization(self.chip, "leak", IntegerConstraint())
         parametrize.register_parametrization(self.chip, "thr", BoundedConstraint_Linear(1, 127))
