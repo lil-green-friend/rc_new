@@ -4,6 +4,7 @@ import torch as pt
 import torch.nn as nn
 import torch.nn.utils.parametrize as parametrize
 from .reckon_wrapper import RECKON_Wrapper
+from abc import ABC, abstractmethod
 
 pt.autograd.set_grad_enabled(False)
 
@@ -81,7 +82,7 @@ class PoissonSpikeGeneration(nn.Module):
         x[x > 1] = 1
         return x.bool()
 
-class AdaptivePoissonSpikeGeneration(nn.Module):
+class AdaptiveSpikeGeneration(nn.Module, ABC):
     def __init__(self, batch_size, n_sub_steps, n_fractional_bits):
         """Converts float point to series of n_sub_steps spike/non-spike events
         """
@@ -100,7 +101,7 @@ class AdaptivePoissonSpikeGeneration(nn.Module):
         for i in range(x.shape[1]):
             x[:, i] += self.input_activity_bias.unsqueeze(1)
             x[:, i] = pt.clamp(x[:, i], min=0.0)
-            x[:, i] = pt.clamp(pt.poisson(x[:, i]), max=1)
+            x[:, i] = self.generate(x[:, i])
             self.input_activity_bias += self.fixed_point_constraint(1/self.input_activity_tau * (self.target_input_activity - pt.sum(x[:, i], dim=1)))
 
         return x.bool()
@@ -110,6 +111,27 @@ class AdaptivePoissonSpikeGeneration(nn.Module):
             self.input_activity_bias = self.input_activity_bias_init.data
         else:
             self.input_activity_bias[mask] = self.input_activity_bias_init.data[mask]
+
+    @staticmethod
+    @abstractmethod
+    def generate(x_i):
+        pass
+
+class AdaptivePoissonSpikeGeneration(AdaptiveSpikeGeneration):
+    def __init__(self, *args, **kw):
+        super().__init__(*args, **kw)
+
+    @staticmethod
+    def generate(x_i):
+        return pt.clamp(pt.poisson(x_i), max=1)
+
+class AdaptiveUniformSpikeGeneration(AdaptiveSpikeGeneration):
+    def __init__(self, *args, **kw):
+        super().__init__(*args, **kw)
+    
+    @staticmethod
+    def generate(x_i):
+        return pt.rand_like(x_i) < x_i
 
 
 class SOM_layer(nn.Module):
@@ -142,7 +164,7 @@ class MyModel(nn.Module):
         n_fractional_bits = 2
 
         self.som = SOM_layer(self.n_inputs, self.reservoir_n_in)
-        self.spike_gen = AdaptivePoissonSpikeGeneration(self.bs, self.steps_per_frame, n_fractional_bits)
+        self.spike_gen = AdaptiveUniformSpikeGeneration(self.bs, self.steps_per_frame, n_fractional_bits)
         self.chip = RECKON_Wrapper(self.bs,
             n_channels_in=1,
             n_reservoir=self.reservoir_n.item(),
