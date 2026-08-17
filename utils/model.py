@@ -56,6 +56,13 @@ class FixedPointConstraint(nn.Module):
     def forward(self, x):
         return pt.round(x * self.scaling_factor) / self.scaling_factor
 
+class PowerOfTwoConstraint(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x):
+        return 2**pt.round(x)
+
 def triangle(x: pt.Tensor):
     """
     realizes a periodic triangle function, osscilating between 0 and 1 with a period of 2
@@ -154,8 +161,8 @@ class MyModel(nn.Module):
         parametrize.register_parametrization(self, "input_res", LowerBoundedConstraint_Linear(0))
         parametrize.register_parametrization(self.spike_gen, "target_input_activity", BoundedConstraint_Linear(6, 26))
         parametrize.register_parametrization(self.spike_gen, "target_input_activity", FixedPointConstraint(n_fractional_bits))
-        parametrize.register_parametrization(self.spike_gen, "input_activity_tau", BoundedConstraint_Linear(4, 200))
-        parametrize.register_parametrization(self.spike_gen, "input_activity_tau", FixedPointConstraint(n_fractional_bits))
+        parametrize.register_parametrization(self.spike_gen, "input_activity_tau", BoundedConstraint_Linear(1, 4))
+        parametrize.register_parametrization(self.spike_gen, "input_activity_tau", PowerOfTwoConstraint())
         parametrize.register_parametrization(self.spike_gen, "input_activity_bias_init", BoundedConstraint_Linear(-6, 6))
         parametrize.register_parametrization(self.spike_gen, "input_activity_bias_init", FixedPointConstraint(n_fractional_bits))
         parametrize.register_parametrization(self.chip, "leak", BoundedConstraint_Linear(0, 32))
