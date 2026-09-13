@@ -39,8 +39,8 @@ if __name__ == "__main__":
         "som.input_means": means,
         "som.input_stds": stds,
         "som.weights": weights,
-        "chip.Win_scale": pt.full((batch_size,), -2.5),
-        "chip.Win_bias": pt.full((batch_size,), 5),
+        "chip.Win_scale": pt.full((1,), -2.5),
+        "chip.Win_bias": pt.full((1,), 5),
     }
 
     model = MyModel(batch_size, device, 8, 4, 20, reservoir_n_in=weights.shape[0], reservoir_n=128)
