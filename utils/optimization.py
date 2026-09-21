@@ -76,7 +76,7 @@ def create_fields(backend, ctx):
     map_shape = (map._bin_size, map._bin_size, map._depth)
 
     for key in ("pop_best_eval", "median_eval", "mean_eval"):
-        backend.add_path(f"results/{key}", shape=(n_epochs,), chunks=(n_epochs,))
+        backend.add_path(f"results/{key}", shape=(n_epochs,), chunks=(1,))
 
     for key in ("fitness", "total_score", "action_prob", "firing_rate"):
         backend.add_path(f"map_evals/{key}", shape=(n_epochs,) + map_shape, chunks=(1,) + map_shape)

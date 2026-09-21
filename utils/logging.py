@@ -1,5 +1,6 @@
 import os
 import h5py
+import numpy as np
 
 class Context(dict):
     def __init__(self, data=None, **kwargs):
@@ -79,18 +80,27 @@ class HDF5Backend():
     def write_next(self, path, value):
         if hasattr(value, "detach") and hasattr(value, "cpu") and hasattr(value, "numpy"):
             value = value.detach().cpu().numpy()
+
         dataset = self.f[path]
         chunk_size = dataset.chunks[0]
-        expected_shape = (chunk_size,) + dataset.shape[1:]
-        if value.shape != expected_shape:
-            raise ValueError(
-                f"Expected {path} value to have shape {expected_shape}, "
-                f"got {value.shape}"
-            )
+
+        # if not hasattr(value, "shape"):
+        #     value = np.array((value, ))
+        # expected_shape = (chunk_size,) + dataset.shape[1:]
+
+        # if len(value.shape) == (len(expected_shape) - 1):
+        #     value = value[None, ...]
+
+        # if value.shape != expected_shape:
+        #     raise ValueError(
+        #         f"Expected {path} value to have shape {expected_shape}, "
+        #         f"got {value.shape}"
+        #     )
 
         idx = self.paths[path]["idx"]
         next_idx = idx + chunk_size
         if next_idx > dataset.shape[0]:
+            print(path, next_idx, idx, chunk_size)
             dataset.resize((next_idx,) + dataset.shape[1:])
         dataset[idx:next_idx] = value
         self.paths[path]["idx"] = next_idx
