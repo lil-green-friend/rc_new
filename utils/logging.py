@@ -79,12 +79,21 @@ class HDF5Backend():
     def write_next(self, path, value):
         if hasattr(value, "detach") and hasattr(value, "cpu") and hasattr(value, "numpy"):
             value = value.detach().cpu().numpy()
-        idx = self.paths[path]["idx"]
         dataset = self.f[path]
-        if idx >= dataset.shape[0]:
-            dataset.resize((idx + 1,) + dataset.shape[1:])
-        dataset[idx] = value
-        self.paths[path]["idx"] += 1 
+        chunk_size = dataset.chunks[0]
+        expected_shape = (chunk_size,) + dataset.shape[1:]
+        if value.shape != expected_shape:
+            raise ValueError(
+                f"Expected {path} value to have shape {expected_shape}, "
+                f"got {value.shape}"
+            )
+
+        idx = self.paths[path]["idx"]
+        next_idx = idx + chunk_size
+        if next_idx > dataset.shape[0]:
+            dataset.resize((next_idx,) + dataset.shape[1:])
+        dataset[idx:next_idx] = value
+        self.paths[path]["idx"] = next_idx
 
     def write_idx(self, path, idx, value):
         if hasattr(value, "detach") and hasattr(value, "cpu") and hasattr(value, "numpy"):
