@@ -29,7 +29,7 @@ if __name__ == "__main__":
     device = "cuda" if pt.cuda.is_available() else "cpu"
     n_threads = max([i for i in range(1, max(4, os.cpu_count() // 4) + 1) if batch_size % i == 0])
 
-    som_path = "./data/soms/small/random_play_sigma_4_uniform_1k_small_max.npz"
+    som_path = "data/soms/small/random_play_4_1k_shrunk_ires.npz"
     som_data = np.load(som_path, allow_pickle=True)
     weights = pt.from_numpy(som_data['weights']).to(device)
     means = pt.from_numpy(som_data['input_means']).to(device)
@@ -41,6 +41,7 @@ if __name__ == "__main__":
         "som.weights": weights,
         "chip.Win_scale": pt.full((1,), -2.5),
         "chip.Win_bias": pt.full((1,), 5),
+        "input_res": pt.tensor((2, 1, 5, 2.5, 3.333, 5, 1, 1))
     }
 
     model = MyModel(batch_size, device, 8, 4, 20, reservoir_n_in=weights.shape[0], reservoir_n=128)

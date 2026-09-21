@@ -159,7 +159,7 @@ class MyModel(nn.Module):
         self.bs = batch_size
 
         self.beta = nn.Parameter(pt.empty((self.bs,)))
-        self.input_res = nn.Parameter(pt.empty((self.bs, self.n_inputs)))
+        self.register_buffer("input_res", pt.empty(self.n_inputs))
 
         n_fractional_bits = 2
 
