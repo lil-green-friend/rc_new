@@ -43,7 +43,7 @@ if __name__ == "__main__":
         "chip.Win_bias": pt.full((1,), 5),
     }
 
-    model = MyModel(batch_size, device, 8, 4, 20, reservoir_n_in=weights.shape[0], reservoir_n=128)
+    model = MyModel(batch_size, device, 8, 4, 5, reservoir_n_in=weights.shape[0], reservoir_n=128)
     model.load_state_dict(state_dict, strict=False)
 
     env = LLWrapper(batch_size, n_threads, device)
