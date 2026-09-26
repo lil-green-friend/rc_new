@@ -33,7 +33,7 @@ def evaluate(model, env, params, n_evals, max_frames, device="cpu", logger=None,
     term = pt.zeros(bs, dtype=bool)
     with parametrize.cached():
         for f in range(max_frames):
-            action, activity = model((obs, term))
+            action, activity = model(obs)
             if logger is not None:
                 ctx.eval_locals = locals()
                 logger.emit("eval__after_forward", ctx)
