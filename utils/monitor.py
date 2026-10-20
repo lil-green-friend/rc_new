@@ -1,6 +1,8 @@
-import torch as pt
-import h5py
 from contextlib import AbstractContextManager
+
+import h5py
+import torch as pt
+
 
 class Monitor(AbstractContextManager):
     def __init__(self, model, specs, h5_path, to_cpu=True):
@@ -43,7 +45,10 @@ class Monitor(AbstractContextManager):
                 arr = self._prep(v)
                 if sub_key not in self.datasets:
                     self.datasets[sub_key] = self.h5_file.create_dataset(
-                        sub_key, (0, *arr.shape), dtype=arr.dtype, maxshape=(None, *arr.shape)
+                        sub_key,
+                        (0, *arr.shape),
+                        dtype=arr.dtype,
+                        maxshape=(None, *arr.shape),
                     )
                 ds = self.datasets[sub_key]
                 ds.resize(ds.shape[0] + 1, axis=0)
@@ -60,19 +65,23 @@ class Monitor(AbstractContextManager):
 
     def __enter__(self):
         self.h5_file = h5py.File(self.h5_path, "w")
-        
+
         for key, spec in self.specs.items():
             module = self._resolve_module(spec.get("module", ""))
             kind = spec.get("kind", "post")
             fn = spec["fn"]
 
             if kind == "pre":
+
                 def _pre_hook(mod, args, _key=key, _fn=fn):
                     self._store(_key, _fn(mod, args, None))
+
                 h = module.register_forward_pre_hook(_pre_hook)
             else:
+
                 def _post_hook(mod, args, out, _key=key, _fn=fn):
                     self._store(_key, _fn(mod, args, out))
+
                 h = module.register_forward_hook(_post_hook)
             self.handles.append(h)
         return self
@@ -81,7 +90,7 @@ class Monitor(AbstractContextManager):
         for h in self.handles:
             h.remove()
         self.handles.clear()
-        
+
         if self.h5_file is not None:
             self.h5_file.close()
         return False

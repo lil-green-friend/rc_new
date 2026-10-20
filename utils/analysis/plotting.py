@@ -12,7 +12,8 @@ def savefig(path, **kw):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     plt.savefig(path, **kw)
 
-def spike_scatterplot( # TODO test 
+
+def spike_scatterplot(  # TODO test
     ax: Axes,
     data: NDArray[np.number],
     t_start: int = 0,
@@ -52,7 +53,9 @@ def spike_scatterplot( # TODO test
             "Expecting either neuron_colors or c as a parameter"
         )
         color_values = np.asarray(neuron_colors)
-        if color_values.ndim > 0 and color_values.size != 4: # TODO this probably does not cover all edge cases
+        if (
+            color_values.ndim > 0 and color_values.size != 4
+        ):  # TODO this probably does not cover all edge cases
             assert color_values.size == data.shape[1], (
                 f"Expecting either color for each neuron or a single color for all neurons, got: {color_values}"
             )

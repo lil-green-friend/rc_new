@@ -1,17 +1,12 @@
 import numpy as np
 import torch as pt
-import torch.nn as nn
-import torch.nn.utils.parametrize as parametrize
+from torch import nn
+from torch.nn.utils import parametrize
+
 from .to_wrapper import TinyOdin_Wrapper
 
 pt.autograd.set_grad_enabled(False)
 
-# class MyModule(nn.Module):
-#     def __init__(self):
-#         super().__init__()
-
-#     def forward(self, x):
-#         return x
 
 class IntegerConstraint(nn.Module):
     def __init__(self):
@@ -19,6 +14,7 @@ class IntegerConstraint(nn.Module):
 
     def forward(self, x):
         return pt.round(x)
+
 
 class BoundedConstraint_Linear(nn.Module):
     def __init__(self, lower, upper):
@@ -29,6 +25,7 @@ class BoundedConstraint_Linear(nn.Module):
     def forward(self, x):
         return triangle(x + 0.5) * self.range + self.lower
 
+
 class BoundedConstraint_Cos(nn.Module):
     def __init__(self, lower, upper):
         super().__init__()
@@ -38,20 +35,23 @@ class BoundedConstraint_Cos(nn.Module):
     def forward(self, x):
         return (pt.cos(x) + 1) / 2 * self.range + self.lower
 
+
 class LowerBoundedConstraint_Linear(nn.Module):
     def __init__(self, lower):
         super().__init__()
         self.lower = lower
-    
+
     def forward(self, x):
         return pt.abs(x) + self.lower
+
 
 def triangle(x: pt.Tensor):
     """
     realizes a periodic triangle function, osscilating between 0 and 1 with a period of 2
     it starts with a minimum at [0, 0]
     """
-    return 2 * pt.abs(x/2 - pt.floor(0.5 + x/2))
+    return 2 * pt.abs(x / 2 - pt.floor(0.5 + x / 2))
+
 
 class PoissonSpikeGeneration(nn.Module):
     def __init__(self, n_sub_steps):
@@ -63,6 +63,7 @@ class PoissonSpikeGeneration(nn.Module):
         x = pt.poisson(x.unsqueeze(1).expand(-1, self.n_sub_steps, -1))
         x[x > 1] = 1
         return x.bool()
+
 
 class SOM_layer(nn.Module):
     def __init__(self, in_features, out_features):
@@ -76,11 +77,36 @@ class SOM_layer(nn.Module):
         x = x @ self.weights.T
         return x
 
+
 class TinyOdinModel(nn.Module):
-    def __init__(self, batch_size, device, n_inputs, n_actions, steps_per_frame, excitation_coefficient, input_spike_interval, reservoir_n_in=128, reservoir_n=256, reservoir_n_out=32, reservoir_sparsity=0.8, n_cpu_cores=None):
+    def __init__(
+        self,
+        batch_size,
+        device,
+        n_inputs,
+        n_actions,
+        steps_per_frame,
+        excitation_coefficient,
+        input_spike_interval,
+        reservoir_n_in=128,
+        reservoir_n=256,
+        reservoir_n_out=32,
+        reservoir_sparsity=0.8,
+        n_cpu_cores=None,
+    ):
         super().__init__()
 
-        buffers = ["n_inputs", "n_actions", "steps_per_frame", "excitation_coefficient", "input_spike_interval", "reservoir_n_in", "reservoir_n", "reservoir_n_out", "reservoir_sparsity"]
+        buffers = [
+            "n_inputs",
+            "n_actions",
+            "steps_per_frame",
+            "excitation_coefficient",
+            "input_spike_interval",
+            "reservoir_n_in",
+            "reservoir_n",
+            "reservoir_n_out",
+            "reservoir_sparsity",
+        ]
         for k in buffers:
             v = locals()[k]
             v = pt.tensor(v) if not isinstance(v, pt.Tensor) else v
@@ -93,26 +119,40 @@ class TinyOdinModel(nn.Module):
 
         self.som = SOM_layer(self.n_inputs, self.reservoir_n_in)
         self.spike_gen = PoissonSpikeGeneration(self.steps_per_frame)
-        self.chip = TinyOdin_Wrapper(self.bs,
+        self.chip = TinyOdin_Wrapper(
+            self.bs,
             n_res=self.reservoir_n,
             n_out=self.reservoir_n_out,
             n_actions=self.n_actions,
             n_in=self.reservoir_n_in,
             input_spike_interval=self.input_spike_interval,
-            device = device,
+            device=device,
             n_cpu_cores=n_cpu_cores,
-            )
-        
-        parametrize.register_parametrization(self, "beta", BoundedConstraint_Linear(1, 20))
-        parametrize.register_parametrization(self, "input_res", LowerBoundedConstraint_Linear(0))
-        parametrize.register_parametrization(self.chip, "leak", 
-        BoundedConstraint_Linear(0, 32))
+        )
+
+        parametrize.register_parametrization(
+            self, "beta", BoundedConstraint_Linear(1, 20)
+        )
+        parametrize.register_parametrization(
+            self, "input_res", LowerBoundedConstraint_Linear(0)
+        )
+        parametrize.register_parametrization(
+            self.chip, "leak", BoundedConstraint_Linear(0, 32)
+        )
         parametrize.register_parametrization(self.chip, "leak", IntegerConstraint())
-        parametrize.register_parametrization(self.chip, "thr", BoundedConstraint_Linear(1, 127))
+        parametrize.register_parametrization(
+            self.chip, "thr", BoundedConstraint_Linear(1, 127)
+        )
         parametrize.register_parametrization(self.chip, "thr", IntegerConstraint())
-        parametrize.register_parametrization(self.chip, "Win_scale", BoundedConstraint_Linear(0, 7))
-        parametrize.register_parametrization(self.chip, "Win_bias", BoundedConstraint_Linear(-7, 7))
-        parametrize.register_parametrization(self.chip, "Wout", BoundedConstraint_Cos(0, 7))
+        parametrize.register_parametrization(
+            self.chip, "Win_scale", BoundedConstraint_Linear(0, 7)
+        )
+        parametrize.register_parametrization(
+            self.chip, "Win_bias", BoundedConstraint_Linear(-7, 7)
+        )
+        parametrize.register_parametrization(
+            self.chip, "Wout", BoundedConstraint_Cos(0, 7)
+        )
         self.chip.set_parametrizations()
 
         self.to(device)
@@ -127,22 +167,32 @@ class TinyOdinModel(nn.Module):
         self.chip.Wout
         self.chip.Wrec
 
-
     def forward(self, x):
         x = pt.clip(x * self.input_res, -1, 1)
         x = self.som(x)
-        x = nn.functional.normalize(pt.clamp(x + 1, min=0.0), 1, dim=1) * self.excitation_coefficient
+        x = (
+            nn.functional.normalize(pt.clamp(x + 1, min=0.0), 1, dim=1)
+            * self.excitation_coefficient
+        )
         x = self.spike_gen(x)
         activity = self.chip(x.to(bool))
-        x = activity[..., :self.reservoir_n_out, :].view(self.bs, self.n_inputs, self.n_actions, -1)
-        x = pt.mean(x, dim=(1, 3), dtype=float) * (20 / self.steps_per_frame) # rate coding
-        action = pt.distributions.Categorical(logits=self.beta[:, None] * x).sample() # softmax
+        x = activity[..., : self.reservoir_n_out, :].view(
+            self.bs, self.n_inputs, self.n_actions, -1
+        )
+        x = pt.mean(x, dim=(1, 3), dtype=float) * (
+            20 / self.steps_per_frame
+        )  # rate coding
+        action = pt.distributions.Categorical(
+            logits=self.beta[:, None] * x
+        ).sample()  # softmax
         return action, activity.to(float)
+
 
 def create_sparsity_mask(size, sparsity):
     sparsity = pt.from_numpy(regular_mask(size, size, sparsity)[0])
-    sparsity *= (1 - pt.eye(size).long()) # no connections along diagonal
-    return sparsity 
+    sparsity *= 1 - pt.eye(size).long()  # no connections along diagonal
+    return sparsity
+
 
 def regular_mask(rows, cols, p):
     # Create an empty mask
@@ -178,6 +228,7 @@ def regular_mask(rows, cols, p):
 def get_n_params(model: nn.Module):
     return sum(p.numel() for p in model.parameters()) // model.bs
 
+
 def get_param_offset_and_size(model: nn.Module):
     offset = 0
     d = {}
@@ -190,11 +241,12 @@ def get_param_offset_and_size(model: nn.Module):
 
     return d
 
+
 def set_params(model, vector, bs):
     pointer = 0
     for p in model.parameters():
         num = p.numel() // bs
-        p.data = vector[:, pointer:pointer+num].view_as(p)
+        p.data = vector[:, pointer : pointer + num].view_as(p)
         pointer += num
 
     model.update_parametrizations()

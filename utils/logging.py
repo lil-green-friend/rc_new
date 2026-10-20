@@ -1,6 +1,6 @@
-import os
+
 import h5py
-import numpy as np
+
 
 class Context(dict):
     def __init__(self, data=None, **kwargs):
@@ -20,9 +20,11 @@ class Context(dict):
     def __setattr__(self, key, value):
         self[key] = value
 
+
 class Trigger:
     def __call__(self, ctx) -> bool:
         raise NotImplementedError
+
 
 class SustainedCondition(Trigger):
     """Once the predicate becomes true, logs for duration steps"""
@@ -38,12 +40,13 @@ class SustainedCondition(Trigger):
             self.counter += 1
             return True
         elif not self.triggered and self.predicate(ctx):
-            self.counter = 0 
+            self.counter = 0
             self.triggered = True
             return True
         return False
 
-class HDF5Backend():
+
+class HDF5Backend:
     def __init__(self, path, compression=None, compression_opts=None, dtype=None):
         self.f = h5py.File(path, "w")
         self.paths = {}
@@ -69,16 +72,24 @@ class HDF5Backend():
             kw["compression_opts"] = self.compression_opts
         if "dtype" not in kw and self.dtype is not None:
             kw["dtype"] = self.dtype
-        
+
         self.f.create_dataset(path, **kw)
 
     def write(self, path, value):
-        if hasattr(value, "detach") and hasattr(value, "cpu") and hasattr(value, "numpy"):
+        if (
+            hasattr(value, "detach")
+            and hasattr(value, "cpu")
+            and hasattr(value, "numpy")
+        ):
             value = value.detach().cpu().numpy()
         self.f[path][:] = value
 
     def write_next(self, path, value):
-        if hasattr(value, "detach") and hasattr(value, "cpu") and hasattr(value, "numpy"):
+        if (
+            hasattr(value, "detach")
+            and hasattr(value, "cpu")
+            and hasattr(value, "numpy")
+        ):
             value = value.detach().cpu().numpy()
 
         dataset = self.f[path]
@@ -106,10 +117,15 @@ class HDF5Backend():
         self.paths[path]["idx"] = next_idx
 
     def write_idx(self, path, idx, value):
-        if hasattr(value, "detach") and hasattr(value, "cpu") and hasattr(value, "numpy"):
+        if (
+            hasattr(value, "detach")
+            and hasattr(value, "cpu")
+            and hasattr(value, "numpy")
+        ):
             value = value.detach().cpu().numpy()
         dataset = self.f[path]
         dataset[*idx] = value
+
 
 class Logger:
     def __init__(self, backend):
@@ -125,4 +141,3 @@ class Logger:
         for getter, trigger in self.entries.get(event, []):
             if trigger(context):
                 getter(self.backend, context)
-

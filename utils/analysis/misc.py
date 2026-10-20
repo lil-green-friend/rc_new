@@ -37,10 +37,12 @@ def randomly_select_final_agents_by_fitness(
         return valid_indices[selected_indices[0]]
     return np.transpose(valid_indices[selected_indices])  # can be used as arr[*idx]
 
+
 def get_model_from_final_params(run):
     with h5py.File(f"data/exp/{run}/results.h5") as f:
         params = f["final_params"]
     return get_model(run, pt.from_numpy(params).float().flatten(end_dim=-2))
+
 
 def get_model_from_indices(run, idx):
     with h5py.File(f"data/exp/{run}/results.h5") as f:
@@ -49,10 +51,8 @@ def get_model_from_indices(run, idx):
         if idx.ndim == 1:
             params = final_params[tuple(idx.tolist())]
         else:
-            # h5py requires sorted indices and does not support duplicate indices. 
-            params = np.stack(
-                [final_params[tuple(coord.tolist())] for coord in idx.T]
-            )
+            # h5py requires sorted indices and does not support duplicate indices.
+            params = np.stack([final_params[tuple(coord.tolist())] for coord in idx.T])
     return get_model(run, pt.from_numpy(params).float())
 
 

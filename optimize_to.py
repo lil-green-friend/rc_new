@@ -1,6 +1,7 @@
 import os
-from time import time
 import sys
+from time import time
+
 import h5py
 import numpy as np
 import torch as pt
@@ -9,9 +10,9 @@ from evotorch.algorithms import Cosyne
 
 from utils.ll_wrapper import LLWrapper
 from utils.logging import Context, HDF5Backend, Logger
-from utils.optimization import evaluate
+from utils.optimization import evaluate, init_directories
 from utils.to_model.utils import instanciate_model
-from utils.optimization import init_directories
+
 RID = 25
 MODEL_PATH = f"data/exp/{RID}/model.pt"
 RESULTS_PATH = f"data/exp/{RID}/results.h5"
@@ -81,7 +82,7 @@ def make_objective(model, env, n_evals: int, max_frames: int, device: str):
 
 
 if __name__ == "__main__":
-    test_run = not sys.argv[1] == 'False' if len(sys.argv) > 1 else True
+    test_run = sys.argv[1] != "False" if len(sys.argv) > 1 else True
     _, results_path = init_directories("./data/exp_to/", test_run=test_run, min_id=0)
     device = "cuda" if pt.cuda.is_available() else "cpu"
 
@@ -90,12 +91,14 @@ if __name__ == "__main__":
         N_EVALS = 1
         MAX_FRAMES = 3
         N_GENERATIONS = 2
-    
+
     bs = POP_SIZE * 2
     initial_population = load_initial_population(RESULTS_PATH, bs).to(device=device)
     solution_length = initial_population.shape[1]
 
-    n_threads = max([i for i in range(1, max(4, os.cpu_count() // 4) + 1) if bs % i == 0])
+    n_threads = max(
+        [i for i in range(1, max(4, os.cpu_count() // 4) + 1) if bs % i == 0]
+    )
 
     model = instanciate_model(
         MODEL_PATH,
@@ -130,7 +133,7 @@ if __name__ == "__main__":
         permute_all=False,
         num_elites=2,
         eta=1,
-        num_children=POP_SIZE-2 # needs to be even, subtract num_elites
+        num_children=POP_SIZE - 2,  # needs to be even, subtract num_elites
     )
 
     seeded_population = problem.generate_batch(bs, empty=True)
@@ -139,8 +142,12 @@ if __name__ == "__main__":
     searcher._population = seeded_population.take_best(POP_SIZE)
     searcher._first_generation = False
 
-
-    backend = HDF5Backend(results_path + "/results.h5", compression="gzip", compression_opts=4, dtype="float32")
+    backend = HDF5Backend(
+        results_path + "/results.h5",
+        compression="gzip",
+        compression_opts=4,
+        dtype="float32",
+    )
     create_fields(backend, POP_SIZE, solution_length)
 
     ctx = Context(searcher=searcher, generation=0)
@@ -164,7 +171,19 @@ if __name__ == "__main__":
         best_eval = pt.max(population_evals).item()
         mean_eval = pt.mean(population_evals).item()
         median_eval = pt.median(population_evals).item()
-        print(f"ep{generation}:", np.round(time() - generation_start, 2), "sec", end=";   ")
-        print("mean:", round(mean_eval, 2), "median:", round(median_eval, 2), "best:", round(best_eval, 2))
+        print(
+            f"ep{generation}:",
+            np.round(time() - generation_start, 2),
+            "sec",
+            end=";   ",
+        )
+        print(
+            "mean:",
+            round(mean_eval, 2),
+            "median:",
+            round(median_eval, 2),
+            "best:",
+            round(best_eval, 2),
+        )
 
     print(f"Total time: {time() - t_start:.2f}s")
