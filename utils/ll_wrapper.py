@@ -2,6 +2,7 @@ import envpool
 import torch as pt
 
 TWO_PI = 2 * pt.pi
+OBS_LABELS = ('x', 'y', 'vx', 'vy', 'a', 'va', 'lr', 'll')
 
 class LLWrapper:
     def __init__(self, n_agents, n_threads, device="cpu", render_mode=None, render_width=None, render_height=None, render_callback=None):
@@ -17,7 +18,7 @@ class LLWrapper:
         self.render_mode = render_mode
         self.render_callback = render_callback
         self.video_frames = []  # Accumulate frames for video creation
-        self.obs_labels = ('x', 'y', 'vx', 'vy', 'a', 'va', 'lr', 'll')
+        self.obs_labels = OBS_LABELS
 
         # max/min possible values each observation can take 
         # (according to specification; in practice higher/lower values are possible)
