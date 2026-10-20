@@ -87,11 +87,11 @@ def create_fields(backend, ctx):
         backend.add_path(f"params/{key}", shape=(n_epochs,) + per_epoch_shape, chunks=(1,) + per_epoch_shape,)
 
     s = get_n_params(ctx.model)
-    backend.add_path("final_params", shape=map_shape + (s,), chunks=(1, 1, 1, s), dtype="float64")
+    backend.add_path("final_params", shape=map_shape + (s,), chunks=(1, 1, 1, s), dtype="float32")
 
     for key in ["ep", "depth", "cell"]:
-        backend.add_path(f"replaced_params/{key}", dtype="float64")
-    backend.add_path("replaced_params/params", shape=(0, s), chunks=(1, s), dtype="float64")
+        backend.add_path(f"replaced_params/{key}", dtype="int16")
+    backend.add_path("replaced_params/params", shape=(0, s), chunks=(1, s), dtype="float32")
 
 def write_pop_evals(backend, ctx):
     for key in ("pop_best_eval", "median_eval", "mean_eval"):

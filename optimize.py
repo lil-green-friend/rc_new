@@ -68,7 +68,7 @@ if __name__ == "__main__":
     saved_params = [k.replace("parametrizations.", "").replace(".original", "") for k, v in model.named_parameters() if v.numel() < 10 * batch_size]
     ctx = Context(model=model, env=env, cos=cos, n_epochs=n_epochs, saved_params=saved_params)
 
-    backend = HDF5Backend(os.path.join(results_path, "results.h5"), compression="gzip", compression_opts=4, dtype="float32")
+    backend = HDF5Backend(os.path.join(results_path, "results.h5"), compression="gzip", compression_opts=4, dtype="float16")
     create_fields(backend, ctx)
 
     logger = Logger(backend)
