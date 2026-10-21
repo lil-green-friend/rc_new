@@ -1,0 +1,26 @@
+# copied from https://github.com/astral-sh/ruff-pre-commit
+
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        description: "Run 'ruff check' for extremely fast Python linting"
+        entry: ruff check --force-exclude
+        language: python
+        types_or: [python, pyi, jupyter]
+        args: []
+        require_serial: false
+        additional_dependencies: []
+        minimum_pre_commit_version: "2.9.2"
+
+      - id: ruff-format
+        name: ruff format
+        description: "Run 'ruff format' for extremely fast Python formatting"
+        entry: ruff format --force-exclude
+        language: python
+        types_or: [python, pyi, jupyter, markdown]
+        args: []
+        require_serial: false
+        additional_dependencies: []
+        minimum_pre_commit_version: "2.9.2"
