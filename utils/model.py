@@ -92,11 +92,13 @@ class AdaptiveSpikeGeneration(nn.Module):
         self.n_sub_steps = n_sub_steps
         self.bs = batch_size
         self.bias = nn.Parameter(pt.empty(self.bs))
+        self.scale = nn.Parameter(pt.empty(self.bs))
         self.fixed_point_constraint = FixedPointConstraint(n_fractional_bits)
 
     def forward(self, x):
         x = self.fixed_point_constraint(x)
         x = x + self.bias.unsqueeze(1)
+        x = self.fixed_point_constraint(x * self.scale.unsqueeze(1))
         x = pt.clamp(x, min=0.0)
         x = x.unsqueeze(1).expand(-1, self.n_sub_steps, -1).clone()
         x = pt.rand_like(x) < x
@@ -242,6 +244,8 @@ class MyModel(nn.Module):
         parametrize.register_parametrization(
             self.spike_gen, "bias", FixedPointConstraint(n_fractional_bits)
         )
+        parametrize.register_parametrization(self.spike_gen, "scale", BoundedConstraint_Linear(0, 4))
+        parametrize.register_parametrization(self.spike_gen, "scale", FixedPointConstraint(n_fractional_bits))
         parametrize.register_parametrization(
             self.chip, "leak", BoundedConstraint_Linear(0, 32)
         )
