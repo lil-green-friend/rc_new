@@ -244,8 +244,10 @@ class MyModel(nn.Module):
         parametrize.register_parametrization(
             self.spike_gen, "bias", FixedPointConstraint(n_fractional_bits)
         )
-        parametrize.register_parametrization(self.spike_gen, "scale", BoundedConstraint_Linear(0, 4))
-        parametrize.register_parametrization(self.spike_gen, "scale", FixedPointConstraint(n_fractional_bits))
+        parametrize.register_parametrization(self.spike_gen, "scale", (0, 4))
+        parametrize.register_parametrization(
+            self.spike_gen, "scale", FixedPointConstraint(n_fractional_bits)
+        )
         parametrize.register_parametrization(
             self.chip, "leak", BoundedConstraint_Linear(0, 32)
         )
@@ -268,19 +270,12 @@ class MyModel(nn.Module):
         self.to(device)
 
     def update_parametrizations(self):
-        self.beta
-        self.input_res
-        self.chip.leak
-        self.chip.thr
-        self.chip.Win_scale
-        self.chip.Win_bias
-        self.chip.Wout
-        self.chip.Wrec
+        for parameter in self.parameters():
+            _ = parameter
 
     def forward(self, x):
         x = pt.clip(x * self.input_res, -1, 1)
         x = self.som(x)
-        # x = nn.functional.normalize(pt.clamp(x + 1, min=0.0), 1, dim=1)
         x = self.spike_gen(x)
         activity = self.chip(x.to(self.chip.net.precision))
         x = activity[..., : self.reservoir_n_out, :].view(
