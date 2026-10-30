@@ -244,7 +244,9 @@ class MyModel(nn.Module):
         parametrize.register_parametrization(
             self.spike_gen, "bias", FixedPointConstraint(n_fractional_bits)
         )
-        parametrize.register_parametrization(self.spike_gen, "scale", (0, 4))
+        parametrize.register_parametrization(
+            self.spike_gen, "scale", BoundedConstraint_Linear(0, 4)
+        )
         parametrize.register_parametrization(
             self.spike_gen, "scale", FixedPointConstraint(n_fractional_bits)
         )
