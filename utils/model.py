@@ -278,9 +278,9 @@ class MyModel(nn.Module):
     def forward(self, x):
         x = pt.clip(x * self.input_res, -1, 1)
         x = self.som(x)
-        x = self.spike_gen(x)
-        activity = self.chip(x.to(self.chip.net.precision))
-        x = activity[..., : self.reservoir_n_out, :].view(
+        som_activity = self.spike_gen(x)
+        res_activity = self.chip(som_activity.to(self.chip.net.precision))
+        x = res_activity[..., : self.reservoir_n_out, :].view(
             self.bs, self.n_inputs, self.n_actions, -1
         )
         x = pt.mean(x, dim=(1, 3), dtype=float) * (
@@ -289,6 +289,7 @@ class MyModel(nn.Module):
         action = pt.distributions.Categorical(
             logits=self.beta[:, None] * x
         ).sample()  # softmax
+        activity = pt.cat((res_activity, som_activity.transpose(1, 2)), dim=1)
         return action, activity
 
 
