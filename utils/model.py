@@ -271,10 +271,6 @@ class MyModel(nn.Module):
 
         self.to(device)
 
-    def update_parametrizations(self):
-        for parameter in self.parameters():
-            _ = parameter
-
     def forward(self, x):
         x = pt.clip(x * self.input_res, -1, 1)
         x = self.som(x)
@@ -349,12 +345,16 @@ def get_param_offset_and_size(model: nn.Module):
 
 def set_params(model, vector, bs):
     pointer = 0
-    for p in model.parameters():
-        num = p.numel() // bs
-        p.data = vector[:, pointer : pointer + num].view_as(p)
-        pointer += num
+    with pt.no_grad():
+        for p in model.parameters():
+            num = p.numel() // bs
+            values = vector[:, pointer : pointer + num].reshape_as(p)
+            p.copy_(values)
+            pointer += num
 
-    model.update_parametrizations()
+    cache = getattr(parametrize, "_cache", None)
+    if cache is not None:
+        cache.clear()
 
 
 def instanciate_model(source_path, batch_size=1, device="cpu"):
