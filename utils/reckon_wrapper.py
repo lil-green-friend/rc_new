@@ -37,11 +37,21 @@ class RECKON_Wrapper(nn.Module):
         self.register_buffer("mask_EI", self.net._mask_EI)
 
     def forward(self, x):
+        self._update_parametrizations()
         # return self.net.run(poisson_inputs = x)[0]
         return pt.stack(
             [self.net.forward(poisson_inputs=x[:, i, :]) for i in range(x.shape[1])],
             dim=-1,
         )
+
+    def _update_parametrizations(self):
+        for module in self.modules():
+            parametrizations = getattr(module, "parametrizations", None)
+            if parametrizations is None:
+                continue
+
+            for name in parametrizations:
+                getattr(module, name)
 
     def set_parametrizations(self):
         parametrize.register_parametrization(self, "leak", UpdateLeak(self))
