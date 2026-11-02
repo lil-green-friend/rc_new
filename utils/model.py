@@ -162,17 +162,74 @@ class AdaptiveUniformSpikeGeneration(RealtimeAdaptiveSpikeGeneration):
         return pt.rand_like(x_i) < x_i
 
 
+class _SOMNormalize(nn.Module):
+    def forward(self, x, input_means, input_stds):
+        return (x - input_means) / input_stds
+
+
+class _SOMProjection(nn.Module):
+    def forward(self, x, weights):
+        return x @ weights.T
+
+
 class SOM_layer(nn.Module):
     def __init__(self, in_features, out_features):
         super().__init__()
         self.register_buffer("input_means", pt.empty((in_features,)))
         self.register_buffer("input_stds", pt.empty((in_features,)))
         self.register_buffer("weights", pt.empty((out_features, in_features)))
+        self.normalize = _SOMNormalize()
+        self.projection = _SOMProjection()
 
     def forward(self, x):
-        x = (x - self.input_means) / self.input_stds
-        x = x @ self.weights.T
-        return x
+        x = self.normalize(x, self.input_means, self.input_stds)
+        return self.projection(x, self.weights)
+
+
+class _InputScale(nn.Module):
+    def forward(self, x, input_res):
+        return x * input_res
+
+class _InputClip(nn.Module):
+    def forward(self, x):
+        return pt.clip(x, -1, 1)
+
+class _ReservoirReadout(nn.Module):
+    def __init__(self, batch_size, n_inputs, n_actions, reservoir_n_out):
+        super().__init__()
+        self.batch_size = batch_size
+        self.n_inputs = n_inputs
+        self.n_actions = n_actions
+        self.reservoir_n_out = reservoir_n_out
+
+    def forward(self, activity):
+        x = activity[..., : self.reservoir_n_out, :]
+        return x.view(self.batch_size, self.n_inputs, self.n_actions, -1)
+
+
+class _RateCode(nn.Module):
+    def __init__(self, steps_per_frame):
+        super().__init__()
+        self.steps_per_frame = (
+            steps_per_frame.item()
+            if isinstance(steps_per_frame, pt.Tensor)
+            else steps_per_frame
+        )
+
+    def forward(self, x):
+        return pt.mean(x, dim=(1, 3), dtype=float) * (20 / self.steps_per_frame)
+
+
+class _ActionSampler(nn.Module):
+    def forward(self, x, beta):
+        return pt.distributions.Categorical(
+            logits=beta[:, None] * x
+        ).sample()
+
+
+class _ActivityOutput(nn.Module):
+    def forward(self, reservoir_activity, som_activity):
+        return pt.cat((reservoir_activity, som_activity.transpose(1, 2)), dim=1)
 
 
 class MyModel(nn.Module):
@@ -209,6 +266,8 @@ class MyModel(nn.Module):
         self.beta = nn.Parameter(pt.empty((self.bs,)))
         self.input_res = nn.Parameter(pt.empty((self.bs, self.n_inputs)))
 
+        self.input_scale = _InputScale()
+        self.input_clip = _InputClip()
         n_fractional_bits = 2
 
         self.som = SOM_layer(self.n_inputs, self.reservoir_n_in)
@@ -231,6 +290,15 @@ class MyModel(nn.Module):
             uniform_weights=True,
             device=device,
         )
+        self.reservoir_readout = _ReservoirReadout(
+            self.bs,
+            self.n_inputs.item(),
+            self.n_actions.item(),
+            self.reservoir_n_out.item(),
+        )
+        self.rate_code = _RateCode(self.steps_per_frame)
+        self.action_sampler = _ActionSampler()
+        self.activity_output = _ActivityOutput()
 
         parametrize.register_parametrization(
             self, "beta", BoundedConstraint_Linear(1, 20)
@@ -239,13 +307,13 @@ class MyModel(nn.Module):
             self, "input_res", LowerBoundedConstraint_Linear(0)
         )
         parametrize.register_parametrization(
-            self.spike_gen, "bias", BoundedConstraint_Linear(-6, 6)
+            self.spike_gen, "bias", BoundedConstraint_Linear(-2, 1.75)
         )
         parametrize.register_parametrization(
             self.spike_gen, "bias", FixedPointConstraint(n_fractional_bits)
         )
         parametrize.register_parametrization(
-            self.spike_gen, "scale", BoundedConstraint_Linear(0, 4)
+            self.spike_gen, "scale", BoundedConstraint_Linear(-2, 1.75)
         )
         parametrize.register_parametrization(
             self.spike_gen, "scale", FixedPointConstraint(n_fractional_bits)
@@ -272,19 +340,15 @@ class MyModel(nn.Module):
         self.to(device)
 
     def forward(self, x):
-        x = pt.clip(x * self.input_res, -1, 1)
+        x = self.input_scale(x, self.input_res)
+        x = self.input_clip(x)
         x = self.som(x)
-        x = self.spike_gen(x)
-        activity = self.chip(x.to(self.chip.net.precision))
-        x = activity[..., : self.reservoir_n_out, :].view(
-            self.bs, self.n_inputs, self.n_actions, -1
-        )
-        x = pt.mean(x, dim=(1, 3), dtype=float) * (
-            20 / self.steps_per_frame
-        )  # rate coding
-        action = pt.distributions.Categorical(
-            logits=self.beta[:, None] * x
-        ).sample()  # softmax
+        som_activity = self.spike_gen(x)
+        res_activity = self.chip(som_activity.to(self.chip.net.precision))
+        x = self.reservoir_readout(res_activity)
+        x = self.rate_code(x)
+        action = self.action_sampler(x, self.beta)
+        activity = self.activity_output(res_activity, som_activity)
         return action, activity
 
 

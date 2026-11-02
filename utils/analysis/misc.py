@@ -6,7 +6,8 @@ import h5py
 import numpy as np
 import torch as pt
 
-from utils.model import set_params
+from utils.model import MyModel, set_params
+from utils.optimization import evaluate
 
 
 def randomly_select_final_agents_by_fitness(
@@ -56,7 +57,7 @@ def get_model_from_indices(run, idx):
     return get_model(run, pt.from_numpy(params).float())
 
 
-def get_model(run_id, params=None):
+def get_model(run_id, params=None, **kw):
     base_path = f"data/exp/{run_id}"
     if params is not None:
         if type(params) == np.ndarray:
@@ -64,25 +65,30 @@ def get_model(run_id, params=None):
         if len(params.shape) == 1:
             params = params.unsqueeze(0)
         bs = params.shape[0]
-        m, _ = instanciate_model(base_path, bs)
-        set_params(m, params, bs)
     else:
-        m, _ = instanciate_model(base_path, 1)
+        bs = 1
+
+    m, _ = instanciate_model(base_path, bs, params=params, **kw)
     return m
 
 
 def instanciate_model(
-    source_path, batch_size, device="cpu"
+    source_path, batch_size, params=None, use_original=True, device="cpu"
 ) -> tuple[pt.nn.Module, Callable]:
     sources = source_path + "/sources/utils/model"
     optim = source_path + "/sources/optimize"
 
-    model_module = importlib.import_module(sources.replace("/", "."))
-    optim_module = importlib.import_module(optim.replace("/", "."))
+    if use_original:
+        model_module = importlib.import_module(sources.replace("/", "."))
+        optim_module = importlib.import_module(optim.replace("/", "."))
 
-    MyModel = model_module.MyModel
-    eval = optim_module.evaluate
-
+        my_model = model_module.MyModel
+        eval = optim_module.evaluate
+        set_p = model_module.set_params
+    else:
+        my_model = MyModel
+        eval = evaluate
+        set_p = set_params
     state_dict = pt.load(source_path + "/model.pt", map_location=pt.device(device))
 
     if "37" in source_path:
@@ -93,10 +99,14 @@ def instanciate_model(
             "chip.parametrizations.Win_bias.original"
         ][0:1]
 
-    # Filter sd to only include keys that match MyModel's __init__ parameters
-    model_init_params = inspect.signature(MyModel.__init__).parameters
+        # Filter sd to only include keys that match MyModel's __init__ parameters
+    model_init_params = inspect.signature(my_model.__init__).parameters
     filtered_sd = {k: v for k, v in state_dict.items() if k in model_init_params}
 
-    m = MyModel(batch_size, "cpu", **filtered_sd)
+    m = my_model(batch_size, "cpu", **filtered_sd)
     m.load_state_dict(state_dict, strict=False)
+
+    if params is not None:
+        set_p(m, params, batch_size)
+
     return m, eval
