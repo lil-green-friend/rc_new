@@ -95,14 +95,16 @@ class AdaptiveSpikeGeneration(nn.Module):
         self.scale = nn.Parameter(pt.empty(self.bs))
         self.bias_layer = _SpikeGenBias()
         self.scale_layer = _SpikeGenScale()
-        self.fixed_point_constraint = FixedPointConstraint(n_fractional_bits)
+        self.f1 = FixedPointConstraint(n_fractional_bits)
+        self.f2 = FixedPointConstraint(n_fractional_bits)
+        self.f3 = FixedPointConstraint(n_fractional_bits)
 
     def forward(self, x):
-        x = self.fixed_point_constraint(x)
+        x = self.f1(x)
         x = self.bias_layer(x, self.bias)
-        x = self.fixed_point_constraint(x)
+        x = self.f2(x)
         x = self.scale_layer(x, self.scale)
-        x = self.fixed_point_constraint(x)
+        x = self.f3(x)
         x = x.unsqueeze(1).expand(-1, self.n_sub_steps, -1).clone()
         x = pt.rand_like(x) < x
         return x.bool()
@@ -188,11 +190,9 @@ class SOM_layer(nn.Module):
         self.register_buffer("input_means", pt.empty((in_features,)))
         self.register_buffer("input_stds", pt.empty((in_features,)))
         self.register_buffer("weights", pt.empty((out_features, in_features)))
-        self.normalize = _SOMNormalize()
         self.projection = _SOMProjection()
 
     def forward(self, x):
-        x = self.normalize(x, self.input_means, self.input_stds)
         return self.projection(x, self.weights)
 
 class _InputScale(nn.Module):
@@ -274,11 +274,13 @@ class MyModel(nn.Module):
 
         self.beta = nn.Parameter(pt.empty((self.bs,)))
         self.input_res = nn.Parameter(pt.empty((self.bs, self.n_inputs)))
+        
+        n_fractional_bits = 2
 
         self.input_scale = _InputScale()
         self.input_clip = _InputClip()
-        n_fractional_bits = 2
-
+        self.f1 = FixedPointConstraint(n_fractional_bits)
+        self.normalize = _SOMNormalize()
         self.som = SOM_layer(self.n_inputs, self.reservoir_n_in)
         self.spike_gen = AdaptiveSpikeGeneration(
             self.bs, self.steps_per_frame, n_fractional_bits
@@ -349,8 +351,10 @@ class MyModel(nn.Module):
         self.to(device)
 
     def forward(self, x):
+        x = self.normalize(x, self.som.input_means, self.som.input_stds)
         x = self.input_scale(x, self.input_res)
         x = self.input_clip(x)
+        x = self.f1(x)
         x = self.som(x)
         som_activity = self.spike_gen(x)
         res_activity = self.chip(som_activity.to(self.chip.net.precision))
