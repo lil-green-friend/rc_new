@@ -69,7 +69,7 @@ def get_model(run_id, params=None, device="cpu", **kw):
     else:
         bs = 1
 
-    m, _ = instanciate_model(base_path, bs, params=params, device=device **kw)
+    m, _ = instanciate_model(base_path, bs, params=params, device=device, **kw)
     return m
 
 
