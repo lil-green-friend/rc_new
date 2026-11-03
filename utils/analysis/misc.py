@@ -57,7 +57,7 @@ def get_model_from_indices(run, idx):
     return get_model(run, pt.from_numpy(params).float())
 
 
-def get_model(run_id, params=None, **kw):
+def get_model(run_id, params=None, device="cpu", **kw):
     base_path = f"data/exp/{run_id}"
     if params is not None:
         if type(params) == np.ndarray:
@@ -65,10 +65,11 @@ def get_model(run_id, params=None, **kw):
         if len(params.shape) == 1:
             params = params.unsqueeze(0)
         bs = params.shape[0]
+        params = params.to(device)
     else:
         bs = 1
 
-    m, _ = instanciate_model(base_path, bs, params=params, **kw)
+    m, _ = instanciate_model(base_path, bs, params=params, device=device **kw)
     return m
 
 
@@ -103,7 +104,7 @@ def instanciate_model(
     model_init_params = inspect.signature(my_model.__init__).parameters
     filtered_sd = {k: v for k, v in state_dict.items() if k in model_init_params}
 
-    m = my_model(batch_size, "cpu", **filtered_sd)
+    m = my_model(batch_size, device, **filtered_sd)
     m.load_state_dict(state_dict, strict=False)
 
     if params is not None:
