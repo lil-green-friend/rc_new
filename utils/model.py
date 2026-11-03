@@ -93,17 +93,27 @@ class AdaptiveSpikeGeneration(nn.Module):
         self.bs = batch_size
         self.bias = nn.Parameter(pt.empty(self.bs))
         self.scale = nn.Parameter(pt.empty(self.bs))
+        self.bias_layer = _SpikeGenBias()
+        self.scale_layer = _SpikeGenScale()
         self.fixed_point_constraint = FixedPointConstraint(n_fractional_bits)
 
     def forward(self, x):
         x = self.fixed_point_constraint(x)
-        x = x + self.bias.unsqueeze(1)
-        x = self.fixed_point_constraint(x * self.scale.unsqueeze(1))
-        x = pt.clamp(x, min=0.0)
+        x = self.bias_layer(x, self.bias)
+        x = self.fixed_point_constraint(x)
+        x = self.scale_layer(x, self.scale)
+        x = self.fixed_point_constraint(x)
         x = x.unsqueeze(1).expand(-1, self.n_sub_steps, -1).clone()
         x = pt.rand_like(x) < x
         return x.bool()
 
+class _SpikeGenBias(nn.Module):
+    def forward(self, x, bias):
+        return x + bias.unsqueeze(1)
+
+class _SpikeGenScale(nn.Module):
+    def forward(self, x, scale):
+        return x * scale.unsqueeze(1)
 
 class RealtimeAdaptiveSpikeGeneration(nn.Module, ABC):
     def __init__(self, batch_size, n_sub_steps, n_fractional_bits):
@@ -184,7 +194,6 @@ class SOM_layer(nn.Module):
     def forward(self, x):
         x = self.normalize(x, self.input_means, self.input_stds)
         return self.projection(x, self.weights)
-
 
 class _InputScale(nn.Module):
     def forward(self, x, input_res):
