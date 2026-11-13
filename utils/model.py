@@ -95,14 +95,16 @@ class AdaptiveSpikeGeneration(nn.Module):
         self.scale = nn.Parameter(pt.empty(self.bs))
         self.bias_layer = _SpikeGenBias()
         self.scale_layer = _SpikeGenScale()
-        self.fixed_point_constraint = FixedPointConstraint(n_fractional_bits)
+        self.f1 = FixedPointConstraint(n_fractional_bits)
+        self.f2 = FixedPointConstraint(n_fractional_bits)
+        self.f3 = FixedPointConstraint(n_fractional_bits)
 
     def forward(self, x):
-        x = self.fixed_point_constraint(x)
+        x = self.f1(x)
         x = self.bias_layer(x, self.bias)
-        x = self.fixed_point_constraint(x)
+        x = self.f2(x)
         x = self.scale_layer(x, self.scale)
-        x = self.fixed_point_constraint(x)
+        x = self.f3(x)
         x = x.unsqueeze(1).expand(-1, self.n_sub_steps, -1).clone()
         x = pt.rand_like(x) < x
         return x.bool()
