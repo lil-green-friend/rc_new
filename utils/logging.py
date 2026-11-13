@@ -110,7 +110,6 @@ class HDF5Backend:
         idx = self.paths[path]["idx"]
         next_idx = idx + chunk_size
         if next_idx > dataset.shape[0]:
-            print(path, next_idx, idx, chunk_size)
             dataset.resize((next_idx,) + dataset.shape[1:])
         dataset[idx:next_idx] = value
         self.paths[path]["idx"] = next_idx
