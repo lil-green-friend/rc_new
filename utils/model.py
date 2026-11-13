@@ -190,11 +190,9 @@ class SOM_layer(nn.Module):
         self.register_buffer("input_means", pt.empty((in_features,)))
         self.register_buffer("input_stds", pt.empty((in_features,)))
         self.register_buffer("weights", pt.empty((out_features, in_features)))
-        self.normalize = _SOMNormalize()
         self.projection = _SOMProjection()
 
     def forward(self, x):
-        x = self.normalize(x, self.input_means, self.input_stds)
         return self.projection(x, self.weights)
 
 class _InputScale(nn.Module):
@@ -277,10 +275,13 @@ class MyModel(nn.Module):
         self.beta = nn.Parameter(pt.empty((self.bs,)))
         self.input_res = nn.Parameter(pt.empty((self.bs, self.n_inputs)))
 
-        self.input_scale = _InputScale()
-        self.input_clip = _InputClip()
         n_fractional_bits = 2
 
+        self.input_scale = _InputScale()
+        self.input_clip = _InputClip()
+
+        self.normalize = _SOMNormalize()
+        self.f1 = FixedPointConstraint(n_fractional_bits)
         self.som = SOM_layer(self.n_inputs, self.reservoir_n_in)
         self.spike_gen = AdaptiveSpikeGeneration(
             self.bs, self.steps_per_frame, n_fractional_bits
@@ -353,6 +354,8 @@ class MyModel(nn.Module):
     def forward(self, x):
         x = self.input_scale(x, self.input_res)
         x = self.input_clip(x)
+        x = self.normalize(x, self.som.input_means, self.som.input_stds)
+        x = self.f1(x)
         x = self.som(x)
         som_activity = self.spike_gen(x)
         res_activity = self.chip(som_activity.to(self.chip.net.precision))
