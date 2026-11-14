@@ -7,6 +7,7 @@ import torch as pt
 from evotorch_custom.algorithms import MAPElites
 
 from utils.cosyne_wrapper import CosyneWrapper
+from utils.integer_operations import FloatToInt
 from utils.ll_wrapper import LLWrapper
 from utils.logging import Context, HDF5Backend, Logger, SustainedCondition
 from utils.model import MyModel, get_n_params
@@ -49,9 +50,9 @@ if __name__ == "__main__":
     stds = pt.from_numpy(som_data["input_stds"]).to(device)
 
     state_dict = {
-        "som.input_means": means,
-        "som.input_stds": stds,
-        "som.weights": weights,
+        "som_input_means": means,
+        "som_input_stds": stds,
+        "som_weights": (weights * 16).to(int), # 4 bit signed fixedpoint (offset = 4) -> 4 bit signed int
         "chip.Win_scale": pt.full((1,), -2.5),
         "chip.Win_bias": pt.full((1,), 5),
     }

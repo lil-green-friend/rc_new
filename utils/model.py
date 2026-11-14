@@ -6,72 +6,21 @@ import torch as pt
 from torch import nn
 from torch.nn.utils import parametrize
 
+from .constraints import (
+    BoundedConstraint_Cos,
+    BoundedConstraint_Linear,
+    FixedPointConstraint,
+    IntegerConstraint,
+    LowerBoundedConstraint_Linear,
+)
+from .integer_operations import (
+    FloatToInt,
+    IntegerAdd,
+    IntegerMul,
+    IntegerType,
+    IntegerVecMatMul,
+)
 from .reckon_wrapper import RECKON_Wrapper
-
-pt.autograd.set_grad_enabled(False)
-
-
-class IntegerConstraint(nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, x):
-        return pt.round(x)
-
-
-class BoundedConstraint_Linear(nn.Module):
-    def __init__(self, lower, upper):
-        super().__init__()
-        self.lower = lower
-        self.range = upper - lower
-
-    def forward(self, x):
-        return triangle(x + 0.5) * self.range + self.lower
-
-
-class BoundedConstraint_Cos(nn.Module):
-    def __init__(self, lower, upper):
-        super().__init__()
-        self.lower = lower
-        self.range = upper - lower
-
-    def forward(self, x):
-        return (pt.cos(x) + 1) / 2 * self.range + self.lower
-
-
-class LowerBoundedConstraint_Linear(nn.Module):
-    def __init__(self, lower):
-        super().__init__()
-        self.lower = lower
-
-    def forward(self, x):
-        return pt.abs(x) + self.lower
-
-
-class FixedPointConstraint(nn.Module):
-    def __init__(self, n_fractional_bits):
-        super().__init__()
-        self.n_fractional_bits = n_fractional_bits
-        self.scaling_factor = 2**self.n_fractional_bits
-
-    def forward(self, x):
-        return pt.round(x * self.scaling_factor) / self.scaling_factor
-
-
-class PowerOfTwoConstraint(nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, x):
-        return 2 ** pt.round(x)
-
-
-def triangle(x: pt.Tensor):
-    """
-    realizes a periodic triangle function, osscilating between 0 and 1 with a period of 2
-    it starts with a minimum at [0, 0]
-    """
-    return 2 * pt.abs(x / 2 - pt.floor(0.5 + x / 2))
 
 
 class PoissonSpikeGeneration(nn.Module):
@@ -86,36 +35,12 @@ class PoissonSpikeGeneration(nn.Module):
         return x.bool()
 
 
-class AdaptiveSpikeGeneration(nn.Module):
-    def __init__(self, batch_size, n_sub_steps, n_fractional_bits):
-        super().__init__()
-        self.n_sub_steps = n_sub_steps
-        self.bs = batch_size
-        self.bias = nn.Parameter(pt.empty(self.bs))
-        self.scale = nn.Parameter(pt.empty(self.bs))
-        self.bias_layer = _SpikeGenBias()
-        self.scale_layer = _SpikeGenScale()
-        self.f1 = FixedPointConstraint(n_fractional_bits)
-        self.f2 = FixedPointConstraint(n_fractional_bits)
-        self.f3 = FixedPointConstraint(n_fractional_bits)
-
-    def forward(self, x):
-        x = self.f1(x)
-        x = self.bias_layer(x, self.bias)
-        x = self.f2(x)
-        x = self.scale_layer(x, self.scale)
-        x = self.f3(x)
-        x = x.unsqueeze(1).expand(-1, self.n_sub_steps, -1).clone()
+class LinearSpikeGeneration(nn.Module):
+    def forward(self, x, n_sub_steps):
+        x = x.unsqueeze(1).expand(-1, n_sub_steps, -1).clone()
         x = pt.rand_like(x) < x
         return x.bool()
 
-class _SpikeGenBias(nn.Module):
-    def forward(self, x, bias):
-        return x + bias.unsqueeze(1)
-
-class _SpikeGenScale(nn.Module):
-    def forward(self, x, scale):
-        return x * scale.unsqueeze(1)
 
 class RealtimeAdaptiveSpikeGeneration(nn.Module, ABC):
     def __init__(self, batch_size, n_sub_steps, n_fractional_bits):
@@ -174,34 +99,20 @@ class AdaptiveUniformSpikeGeneration(RealtimeAdaptiveSpikeGeneration):
         return pt.rand_like(x_i) < x_i
 
 
-class _SOMNormalize(nn.Module):
-    def forward(self, x, input_means, input_stds):
-        return (x - input_means) / input_stds
+class _Normalize(nn.Module):
+    def forward(self, x, means, stds):
+        return (x - means) / stds
 
-
-class _SOMProjection(nn.Module):
-    def forward(self, x, weights):
-        return x @ weights.T
-
-
-class SOM_layer(nn.Module):
-    def __init__(self, in_features, out_features):
-        super().__init__()
-        self.register_buffer("input_means", pt.empty((in_features,)))
-        self.register_buffer("input_stds", pt.empty((in_features,)))
-        self.register_buffer("weights", pt.empty((out_features, in_features)))
-        self.projection = _SOMProjection()
-
-    def forward(self, x):
-        return self.projection(x, self.weights)
 
 class _InputScale(nn.Module):
     def forward(self, x, input_res):
         return x * input_res
 
+
 class _InputClip(nn.Module):
     def forward(self, x):
         return pt.clip(x, -1, 1)
+
 
 class _ReservoirReadout(nn.Module):
     def __init__(self, batch_size, n_inputs, n_actions, reservoir_n_out):
@@ -231,9 +142,7 @@ class _RateCode(nn.Module):
 
 class _ActionSampler(nn.Module):
     def forward(self, x, beta):
-        return pt.distributions.Categorical(
-            logits=beta[:, None] * x
-        ).sample()
+        return pt.distributions.Categorical(logits=beta[:, None] * x).sample()
 
 
 class _ActivityOutput(nn.Module):
@@ -272,20 +181,43 @@ class MyModel(nn.Module):
 
         self.bs = batch_size
 
+        self.register_buffer("som_input_means", pt.empty(self.n_inputs))
+        self.register_buffer("som_input_stds", pt.empty(self.n_inputs))
+        self.register_buffer(
+            "som_weights", pt.empty((self.reservoir_n_in, self.n_inputs))
+        )
+
         self.beta = nn.Parameter(pt.empty((self.bs,)))
         self.input_res = nn.Parameter(pt.empty((self.bs, self.n_inputs)))
+        self.spike_gen_bias = nn.Parameter(pt.empty(self.bs))
+        self.spike_gen_scale = nn.Parameter(pt.empty(self.bs))
 
         n_fractional_bits = 2
 
         self.input_scale = _InputScale()
         self.input_clip = _InputClip()
 
-        self.normalize = _SOMNormalize()
-        self.f1 = FixedPointConstraint(n_fractional_bits)
-        self.som = SOM_layer(self.n_inputs, self.reservoir_n_in)
-        self.spike_gen = AdaptiveSpikeGeneration(
-            self.bs, self.steps_per_frame, n_fractional_bits
+        self.normalize = _Normalize()
+        # ------------------
+        self.ensure_int = FloatToInt(IntegerType(4, signed=True), fmin=-8, fmax=7)
+        self.som = IntegerVecMatMul(
+            r_dtype=IntegerType(6, signed=True),
+            i_dtype=IntegerType(9, signed=True),
+            v_lshift=0,
+            m_lshift=0,
+            r_rshift=0,
+            i_rshift=0,
         )
+        self.apply_bias = IntegerAdd(
+            IntegerType(6, signed=True), a_lshift=0, b_lshift=0, r_rshift=0
+        )
+        self.apply_scale = IntegerMul(
+            IntegerType(6, signed=True), a_lshift=0, b_lshift=0, r_rshift=0
+        )
+        # -------------------
+
+        self.spike_gen = LinearSpikeGeneration()
+
         self.chip = RECKON_Wrapper(
             self.bs,
             n_channels_in=1,
@@ -312,6 +244,8 @@ class MyModel(nn.Module):
         self.action_sampler = _ActionSampler()
         self.activity_output = _ActivityOutput()
 
+        parametrize.register_parametrization(self, "som_weights", FloatToInt(IntegerType(4, True), fmin=-8, fmax=7), unsafe=True)
+
         parametrize.register_parametrization(
             self, "beta", BoundedConstraint_Linear(1, 20)
         )
@@ -319,16 +253,16 @@ class MyModel(nn.Module):
             self, "input_res", LowerBoundedConstraint_Linear(0)
         )
         parametrize.register_parametrization(
-            self.spike_gen, "bias", BoundedConstraint_Linear(-2, 1.75)
+            self, "spike_gen_bias", BoundedConstraint_Linear(-1, 1)
         )
         parametrize.register_parametrization(
-            self.spike_gen, "bias", FixedPointConstraint(n_fractional_bits)
+            self, "spike_gen_bias", FloatToInt(IntegerType(4, True), fmin=-1, fmax=1), unsafe=True
         )
         parametrize.register_parametrization(
-            self.spike_gen, "scale", BoundedConstraint_Linear(-2, 1.75)
+            self, "spike_gen_scale", BoundedConstraint_Linear(-1, 1)
         )
         parametrize.register_parametrization(
-            self.spike_gen, "scale", FixedPointConstraint(n_fractional_bits)
+            self, "spike_gen_scale", FloatToInt(IntegerType(4, True), fmin=-1, fmax=1), unsafe=True
         )
         parametrize.register_parametrization(
             self.chip, "leak", BoundedConstraint_Linear(0, 32)
@@ -354,10 +288,15 @@ class MyModel(nn.Module):
     def forward(self, x):
         x = self.input_scale(x, self.input_res)
         x = self.input_clip(x)
-        x = self.normalize(x, self.som.input_means, self.som.input_stds)
-        x = self.f1(x)
-        x = self.som(x)
-        som_activity = self.spike_gen(x)
+        x = self.normalize(x, self.som_input_means, self.som_input_stds)
+        # --------------------
+        x = self.ensure_int(x)
+        x = self.som(x, self.som_weights.T.unsqueeze(0))
+        x = self.apply_bias(x, self.spike_gen_bias.unsqueeze(1))
+        x = self.apply_scale(x, self.spike_gen_scale.unsqueeze(1))
+        # --------------------
+        x = x.to(float) / 31
+        som_activity = self.spike_gen(x, self.steps_per_frame)
         res_activity = self.chip(som_activity.to(self.chip.net.precision))
         x = self.reservoir_readout(res_activity)
         x = self.rate_code(x)
