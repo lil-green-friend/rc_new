@@ -43,7 +43,7 @@ if __name__ == "__main__":
         [i for i in range(1, max(4, os.cpu_count() // 4) + 1) if batch_size % i == 0]
     )
 
-    som_path = "./data/soms/small/random_play_sigma_4_uniform_1k_small_max.npz"
+    som_path = "./data/soms/small/random_play_sigma_4_uniform_1k_small_max_quant(-0.50,0.44)_4.npz"
     som_data = np.load(som_path, allow_pickle=True)
     weights = pt.from_numpy(som_data["weights"]).to(device)
     means = pt.from_numpy(som_data["input_means"]).to(device)
